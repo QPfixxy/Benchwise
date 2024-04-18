@@ -1,7 +1,7 @@
 // Dependencies
 const express = require('express');
 const path = require('path');
-const getSystemInfo = require('./apps/hardwareinfo');
+const { gatherHardwareInfo } = require('./apps/hardwareInfo');
 
 const app = express();
 const port = 3000;
@@ -11,13 +11,13 @@ const port = 3000;
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 // Route to get system information
-app.get('/system-info', async (req, res) => {
+app.get('/hardware-info', async (req, res) => {
   try {
-    const systemInfo = await getSystemInfo();
-    res.json(systemInfo);
+      const hardwareInfo = await gatherHardwareInfo();
+      res.json(hardwareInfo);
   } catch (error) {
-    console.error('Error fetching system information:', error);
-    res.status(500).json({ error: 'Failed to fetch system information' });
+      console.error('Error fetching hardware information:', error);
+      res.status(500).json({ error: 'Failed to fetch hardware information' });
   }
 });
         
@@ -32,12 +32,3 @@ app.listen(port, () => {
 
 //tools (Plwto, external audit tools, etc)
 
-//app.get('/hardware-info', async (req, res) => {
-//  try {
-//      const hardwareInfo = await gatherHardwareInfo();
-//      res.json(hardwareInfo);
-//  } catch (error) {
-//      console.error('Error fetching hardware information:', error);
-//      res.status(500).json({ error: 'Failed to fetch hardware information' });
-//  }
-//});

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>System Specification Sheet</title>
   <link rel="stylesheet" href="css/standard.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <style>
   </style>
 </head>
@@ -21,54 +22,142 @@
       <a href="/tools">Tools</a>
     </div>
 
-    <table id="systemInfoTable" border="1">
-        <thead>
-            <tr>
-                <th>Category</th>
-                <th>Information</th>
-            </tr>
-        </thead>
-        <tbody id="systemInfoBody">
-            <!-- Table rows will be dynamically added here -->
+     <!-- Move the table structure here -->
+     <table id="hardwareTable">
+        <tbody id="systemInfoSection">
         </tbody>
+        <tbody id="cpuInfoSection">
+        </tbody>
+        <tbody id="ramInfoSection">
+        </tbody>
+        <tbody id="batteryInfoSection">
+        </tbody>
+        <tbody id="webcamInfoSection">
+        </tbody>
+        <tbody id="speakerInfoSection">
+        </tbody>
+        <tbody id="microphoneInfoSection">
+        </tbody>
+        <tbody id="hardDriveInfoSection">
+        </tbody>
+      </table>
 
- 
-
+      <div class="qr-code" id="systemSerialNumber">
+      </div>
+    </div>
+  
     <script>
-        
-        // Function to make AJAX request to fetch system information
-        function fetchSystemInfo() {
-            fetch('/system-info')
-                .then(response => response.json())
-                .then(data => {
-                    // Call function to populate table with system information
-                    populateTable(data);
-                })
-                .catch(error => console.error('Error fetching system information:', error));
+      document.addEventListener('DOMContentLoaded', function() {
+        getHardwareInfo();
+      });
+  
+      function generateQRCode(text) {
+        var qr = qrcode(0, 'M');
+        qr.addData(text);
+        qr.make();
+        return qr.createImgTag();
+      }
+  
+      function getHardwareInfo() {
+        fetch('/hardware-info')
+          .then(response => response.json())
+          .then(data => {
+            displayHardwareInfo(data);
+          })
+          .catch(error => {
+            console.error('Error fetching hardware information:', error.message);
+            displayError();
+          });
+      }
+  
+      function displayHardwareInfo(data) {
+        document.getElementById('systemInfoSection').innerHTML = `
+          <tr>
+            <th>System Information</th>
+            <td>Make: ${data.manufacturer}</td>
+            <td>Model: ${data.model}</td>
+            <td>Serial Number: ${data.systemSerialNumber}</td>
+            <td class="qr-code">${generateQRCode(data.systemSerialNumber)}</td>
+          </tr>
+        `;
+  
+        document.getElementById('cpuInfoSection').innerHTML = `
+          <tr>
+            <th>CPU Information</th>
+            <td colspan="3">Model: ${data.cpuModel}, Speed: ${data.cpuSpeed} MHz, Cores: ${data.cpuCores}</td>
+            <td></td>
+          </tr>
+        `;
+  
+        document.getElementById('ramInfoSection').innerHTML = `
+          <tr>
+            <th>RAM Information</th>
+            <td colspan="3">Total Memory: ${(data.totalMemory / Math.pow(1024, 3)).toFixed(2)} GB, RAM Type: ${data.ramType}, RAM Technology: ${data.ramTechnology}</td>
+            <td></td>
+          </tr>
+        `;
+  
+        document.getElementById('batteryInfoSection').innerHTML = `
+          <tr>
+            <th>Battery Information</th>
+            <td colspan="3">Charge State: ${data.batteryChargeState}, Battery Health: ${data.batteryHealth}, Average Charging Voltage: ${data.batteryChargingVoltage} volts</td>
+            <td></td>
+          </tr>
+        `;
+  
+        document.getElementById('webcamInfoSection').innerHTML = `
+          <tr>
+            <th>Webcam Information</th>
+            <td colspan="3">${data.webcam}</td>
+            <td></td>
+          </tr>
+        `;
+  
+        document.getElementById('speakerInfoSection').innerHTML = `
+          <tr>
+            <th>Speaker Information</th>
+            <td colspan="3">${data.speaker}</td>
+            <td></td>
+          </tr>
+        `;
+  
+        document.getElementById('microphoneInfoSection').innerHTML = `
+          <tr>
+            <th>Microphone Information</th>
+            <td colspan="3">${data.microphone}</td>
+            <td></td>
+          </tr>
+        `;
+  
+        const hardDriveInfoSection = document.getElementById('hardDriveInfoSection');
+        hardDriveInfoSection.innerHTML = '';
+        data.hardDrives.forEach((drive, index) => {
+          hardDriveInfoSection.innerHTML += `
+            <tr>
+              <th>Hard Drive ${index + 1} Information</th>
+              <td>Model: ${drive.modelName}</td>
+              <td>Capacity: ${(drive.totalCapacity)} GB</td>
+              <td>Serial Number: ${drive.serialNumber}</td>
+              <td class="qr-code">${generateQRCode(drive.serialNumber)}</td>
+            </tr>
+          `;
+        });
+  
+        const systemSerialNumberElement = document.getElementById('systemSerialNumber');
+        if (systemSerialNumberElement.innerHTML === '') {
+          const laptopSerialQR = generateQRCode(data.systemSerialNumber);
+          systemSerialNumberElement.innerHTML = laptopSerialQR;
         }
-
-        // Function to populate table with system information
-        function populateTable(systemInfo) {
-            const tableBody = document.getElementById('systemInfoBody');
-            for (const [key, value] of Object.entries(systemInfo)) {
-                if (typeof value === 'object') {
-                    // If value is an object (e.g., storage drives), stringify it
-                    value.forEach(drive => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `<td>${key}</td><td>${JSON.stringify(drive)}</td>`;
-                        tableBody.appendChild(row);
-                    });
-                } else {
-                    // If value is not an object, create a single row
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td>${key}</td><td>${value}</td>`;
-                    tableBody.appendChild(row);
-                }
-            }
-        }
-
-        // Call fetchSystemInfo function when the page loads
-        window.onload = fetchSystemInfo;
+      }
+  
+      function displayError() {
+        const hardwareTable = document.getElementById('hardwareTable');
+        hardwareTable.innerHTML = `
+          <tr>
+            <td colspan="5">Error fetching hardware information. Please try again later.</td>
+          </tr>
+        `;
+      }
     </script>
 </body>
 </html>
