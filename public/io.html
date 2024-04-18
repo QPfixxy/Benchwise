@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware Testing Suite</title>
+  <link rel="stylesheet" href="css/io.css">
+  <style>
+  </style>
+</head>
+<body>
+  </div>
+
+  <div class="container">
+    <img src="https://edge.sitecorecloud.io/ironmountain-c8dd68e9/media/project/iron-mountain/iron-mountain/test-images/logo-full-color.svg?iar=0&sc_lang=en" alt="Company Logo" class="logo">
+    <h1>Hardware Testing Suite</h1>
+    <div class="navigation">
+      <a href="/index.html">System Spec</a>
+      <a href="/io" class="active" >IO Interfaces</a>
+      <a href="/hardware" >Hardware</a>
+      <a href="/tools">Tools</a>
+    </div>
+
+    <div class="test-nav">
+      <button onclick="navigateTests(-1)">← Back</button>
+      <button data-target="Camera" class="active">Camera</button>
+      <button data-target="Keyboard">Keyboard</button>
+      <button data-target="Audio">Audio/Mic</button>
+      <button data-target="test4">Test 4</button>
+      <button onclick="navigateTests(1)">Forward →</button>
+    </div>
+    <div id="Camera" class="test-content">
+      <h2 class="centered-header">Webcam Test</h2>
+      <div class="video-controls">
+        <button id="toggle-button">Turn Camera Off</button>
+        <select id="camera-select"></select>
+      </div>
+      <video id="video" width="640" height="480" autoplay playsinline></video>
+      <br>
+    </div>
+    <div id="Keyboard" class="test-content" style="display:none;">Test 2 content here...</div>
+    <div id="Audio" class="test-content" style="display:none;">Test 3 content here...</div>
+    
+    <div id="test2" class="test-content" style="display:none;">Test 2 content here...</div>
+    <div id="test3" class="test-content" style="display:none;">Test 3 content here...</div>
+    <div id="test4" class="test-content" style="display:none;">Test 4 content here...</div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+  switchTest('Camera'); // Initialize page with Test 1 visible
+});
+
+document.querySelectorAll('.test-nav button[data-target]').forEach(button => {
+  button.addEventListener('click', function() {
+    switchTest(this.getAttribute('data-target'));
+  });
+});
+
+function switchTest(testId) {
+  // Hide all test content divs
+  document.querySelectorAll('.test-content').forEach(content => content.style.display = 'none');
+  
+  // Show the corresponding test content
+  const target = document.getElementById(testId);
+  target.style.display = 'block';
+  
+  // Update active class for buttons
+  document.querySelectorAll('.test-nav button').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-target') === testId);
+  });
+}
+
+function navigateTests(direction) {
+  const currentActive = document.querySelector('.test-nav button.active');
+  const tests = Array.from(document.querySelectorAll('.test-nav button[data-target]'));
+  let currentIndex = tests.indexOf(currentActive);
+  currentIndex += direction;
+
+  // Loop through the tests
+  if (currentIndex >= tests.length) currentIndex = 0;
+  if (currentIndex < 0) currentIndex = tests.length - 1;
+
+  switchTest(tests[currentIndex].getAttribute('data-target'));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  switchTest('Camera'); // Initialize page with Test 1 visible, which includes the webcam
+  setupWebcam(); // Setup webcam controls
+});
+
+function setupWebcam() {
+  const video = document.getElementById('video');
+  const toggleButton = document.getElementById('toggle-button');
+  const cameraSelect = document.getElementById('camera-select');
+
+  async function startVideoStream(deviceId) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId } });
+      video.srcObject = stream;
+    } catch (error) {
+      console.error('Error accessing video stream:', error);
+    }
+  }
+
+  navigator.mediaDevices.enumerateDevices()
+    .then(devices => {
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      videoDevices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Camera ${cameraSelect.options.length + 1}`;
+        cameraSelect.appendChild(option);
+      });
+      if (videoDevices.length > 0) {
+        startVideoStream(videoDevices[0].deviceId); // Start with the first available camera
+      }
+    })
+    .catch(error => {
+      console.error('Error enumerating devices:', error);
+    });
+
+  let isCameraOn = true;
+  toggleButton.addEventListener('click', () => {
+    if (isCameraOn) {
+      video.srcObject.getTracks().forEach(track => track.stop());
+      toggleButton.textContent = 'Turn Camera On';
+    } else {
+      const selectedDeviceId = cameraSelect.value;
+      startVideoStream(selectedDeviceId);
+      toggleButton.textContent = 'Turn Camera Off';
+    }
+    isCameraOn = !isCameraOn;
+  });
+}
+  </script>
+</body>
+</html>

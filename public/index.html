@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Specification Sheet</title>
+  <link rel="stylesheet" href="css/standard.css">
+  <style>
+  </style>
+</head>
+<body>
+  </div>
+
+  <div class="container">
+    <img src="https://edge.sitecorecloud.io/ironmountain-c8dd68e9/media/project/iron-mountain/iron-mountain/test-images/logo-full-color.svg?iar=0&sc_lang=en" alt="Company Logo" class="logo">
+    <h1>System Specification Sheet</h1>
+    <div class="navigation">
+      <a href="/index.html" class="active" >System Spec</a>
+      <a href="/io" >IO Interfaces</a>
+      <a href="/hardware" >Hardware</a>
+      <a href="/tools">Tools</a>
+    </div>
+
+    <table id="systemInfoTable" border="1">
+        <thead>
+            <tr>
+                <th>Category</th>
+                <th>Information</th>
+            </tr>
+        </thead>
+        <tbody id="systemInfoBody">
+            <!-- Table rows will be dynamically added here -->
+        </tbody>
+
+ 
+
+    <script>
+        
+        // Function to make AJAX request to fetch system information
+        function fetchSystemInfo() {
+            fetch('/system-info')
+                .then(response => response.json())
+                .then(data => {
+                    // Call function to populate table with system information
+                    populateTable(data);
+                })
+                .catch(error => console.error('Error fetching system information:', error));
+        }
+
+        // Function to populate table with system information
+        function populateTable(systemInfo) {
+            const tableBody = document.getElementById('systemInfoBody');
+            for (const [key, value] of Object.entries(systemInfo)) {
+                if (typeof value === 'object') {
+                    // If value is an object (e.g., storage drives), stringify it
+                    value.forEach(drive => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${key}</td><td>${JSON.stringify(drive)}</td>`;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    // If value is not an object, create a single row
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${key}</td><td>${value}</td>`;
+                    tableBody.appendChild(row);
+                }
+            }
+        }
+
+        // Call fetchSystemInfo function when the page loads
+        window.onload = fetchSystemInfo;
+    </script>
+</body>
+</html>

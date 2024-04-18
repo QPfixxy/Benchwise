@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "cpu": "^1.0.1",
+    "express": "^4.19.2",
+    "fs": "^0.0.1-security",
+    "gpu-info": "^0.0.1",
+    "handlebars": "^4.7.8",
+    "path": "^0.12.7",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.5",
+    "systeminformation": "^5.22.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
