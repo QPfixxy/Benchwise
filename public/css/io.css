@@ -168,3 +168,138 @@ body {
       text-align: center;
       margin-top: 20px;
     }
+
+    .test-selection-container {
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+  }
+
+  .test-selection {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+  }
+
+  .test-selection label {
+      display: inline-flex;
+      align-items: center;
+      background-color: #007bff;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+  }
+
+  .test-selection label:hover {
+      background-color: #0056b3;
+  }
+
+  .test-selection input[type="checkbox"] {
+      display: none;
+  }
+
+  .test-selection input[type="checkbox"]:checked + label {
+      background-color: #66a3ff;
+  }
+
+  .action-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+  }
+
+  .action-buttons button {
+      padding: 8px 16px;
+      font-size: 16px;
+      border-radius: 5px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+  }
+
+  .action-buttons button:hover {
+      background-color: #0056b3;
+  }
+
+  .progress-bar-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.progress-bar {
+    width: 300px; /* Adjusted width */
+    height: 10px; /* Adjusted height */
+    background-color: #f0f0f0;
+    border-radius: 5px; /* Adjusted border-radius */
+    margin-bottom: 5px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    width: 100%;
+    text-align: center;
+    color: #000;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.progress {
+    width: 0;
+    height: 100%;
+    background-color: #007bff; /* Changed color */
+    border-radius: 5px; /* Adjusted border-radius */
+    transition: width 0.5s ease-in-out;
+}
+
+.info-box {
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 5px;
+    text-align: center;
+    width: 300px;
+    margin-top: 10px;
+}
+
+.test-result-box {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    margin-top: 20px;
+}
+
+.test-result {
+    padding: 8px 16px;
+    font-size: 16px;
+    border-radius: 5px;
+    text-align: center;
+    width: 150px;
+    color: #fff;
+}
+
+.test-pass {
+    background-color: #4caf50; /* Green color */
+}
+
+.test-fail {
+    background-color: #f44336; /* Red color */
+}
+
+.test-not-run {
+    background-color: #ccc; /* Gray color */
+}

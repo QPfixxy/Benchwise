@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hardware Component Testing Suite</title>
-  <link rel="stylesheet" href="css/standard.css">
+  <link rel="stylesheet" href="css/io.css">
   <style>
   </style>
 </head>
@@ -20,8 +20,30 @@
       <a href="/hardware" class="active" >Hardware</a>
       <a href="/tools">Tools</a>
     </div>
+    <div class="test-selection-container">
+      <div class="test-selection">
+          <input type="checkbox" id="cpuCheckbox" value="cpu">
+          <label for="cpuCheckbox">CPU Stress Test</label>
+          <input type="checkbox" id="gpuCheckbox" value="gpu">
+          <label for="gpuCheckbox">GPU Stress Test</label>
+          <input type="checkbox" id="ramCheckbox" value="ram">
+          <label for="ramCheckbox">RAM Stress Test</label>
+          <input type="checkbox" id="StorageCheckbox" value="Storage">
+          <label for="StorageCheckbox">Storage Stress Test</label>
+      </div>
+      <div class="action-buttons">
+          <button onclick="startTest()">Test Selected</button>
+          <button onclick="testAll()">Test All</button>
+      </div>
+  </div>
 
-  <script>
+  <div class="test-result-box">
+      <div class="test-result test-not-run" id="cpuTestResult">CPU</div>
+      <div class="test-result test-not-run" id="gpuTestResult">GPU</div>
+      <div class="test-result test-not-run" id="ramTestResult">RAM</div>
+      <div class="test-result test-not-run" id="StorageTestResult">Storage</div>
+  </div>
+
   </script>
 </body>
 </html>
