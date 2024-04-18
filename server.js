@@ -32,3 +32,12 @@ app.listen(port, () => {
 
 //tools (Plwto, external audit tools, etc)
 
+//app.get('/hardware-info', async (req, res) => {
+//  try {
+//      const hardwareInfo = await gatherHardwareInfo();
+//      res.json(hardwareInfo);
+//  } catch (error) {
+//      console.error('Error fetching hardware information:', error);
+//      res.status(500).json({ error: 'Failed to fetch hardware information' });
+//  }
+//});
