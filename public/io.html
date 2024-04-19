@@ -26,9 +26,11 @@
       <button data-target="Camera" class="active">Camera</button>
       <button data-target="Keyboard">Keyboard</button>
       <button data-target="Audio">Audio/Mic</button>
-      <button data-target="test4">Test 4</button>
+      <button data-target="touchscreen">Touch Screen</button>
+      <button data-target="Ports">Ports</button>
       <button onclick="navigateTests(1)">Forward →</button>
     </div>
+    
     <div id="Camera" class="test-content">
       <h2 class="centered-header">Webcam Test</h2>
       <div class="video-controls">
@@ -38,24 +40,33 @@
       <video id="video" width="640" height="480" autoplay playsinline></video>
       <br>
     </div>
-    <div id="Keyboard" class="test-content" style="display:none;">Test 2 content here...</div>
-    <div id="Audio" class="test-content" style="display:none;">
+    <div id="Keyboard" class="test-content" style="display:none;">keyboard.</div>
+    
+    <div id="Audio" class="test-content hidden">
       <h2 class="centered-header">Microphone Test</h2>
-      <div class="audio-controls">
-        <button id="record-button">Record</button>
-        <button id="play-button" disabled>Play</button>
-        <div id="status-bar" style="width: 100%; height: 20px; background-color: gray;"></div>
+      <div class="bar-container">
+          <div id="status-bar" class="status-bar"></div>
       </div>
-      <audio id="audio-playback" controls style="display: none;"></audio>
-      <div class="speaker-test">
-        <h2 class="centered-header">Speaker Test</h2>
-        <button id="test-speaker-button">Test Speakers</button>
-        <div id="progress-container" style="width: 100%; background-color: #ddd;">
-          <div id="progress-bar" style="width: 0%; height: 20px; background-color: #4CAF50;"></div>
-    </div>
-    <div id="test3" class="test-content" style="display:none;">Test 3 content here...</div>
-    <div id="test4" class="test-content" style="display:none;">Test 4 content here...</div>
-  </div>
+      <div class="button-container centered">
+          <button id="record-button">Record</button>
+          <button id="play-button" disabled>Play</button>
+      </div>
+      <audio id="audio-playback" class="hidden"></audio>
+  
+      <h2 class="centered-header">Speaker Test</h2>
+      <div class="bar-container">
+          <div id="progress-container" class="progress-container">
+              <div id="progress-bar" class="progress-bar"></div>
+          </div>
+      </div>
+      <div class="button-container centered">
+          <button id="test-speaker-button">Test Speakers</button>
+      </div>
+    </div>  
+  
+    <div id="touchscreen" class="test-content" style="display:none;">touchscreen.</div>
+
+    <div id="Ports" class="test-content" style="display:none;">Ports.</div>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
