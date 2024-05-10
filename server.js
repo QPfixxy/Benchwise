@@ -23,7 +23,10 @@ app.get('/hardware-info', async (req, res) => {
         
 // Server Start function
 app.listen(port, () => {
-  console.log(`Qudit started on http://localhost:${port}`);
+  console.log(`Server running at http://localhost:${port}`);
+  import('open').then(open => {
+      open.default(`http://localhost:${port}`);
+  }).catch(error => console.error("Failed to open browser:", error));
 });
 
 //Validation (Stress Testing CPU, GPU, RAM, STORAGE)
