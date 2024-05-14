@@ -82,6 +82,32 @@ th {
   transition: background-color 0.3s;
 }
 
+.keyboard-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+#resetButton {
+  margin-top: 30px;
+  display: block;
+  width: 120px;
+  padding: 10px 20px;
+  margin: 10px 0;
+  background-color: #007bff;
+  color: white;
+  text-align: center;
+  font-size: 16px;
+  border: none;
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
 .button-list button:hover,
 .start-button:hover,
 .repeat-button:hover {
@@ -135,6 +161,7 @@ th {
   width: auto; 
   display: block;
   text-align: center;
+  margin-bottom: 10px;
 }
 
 #camera-select:hover {
@@ -146,8 +173,6 @@ th {
   background-color: white; 
   text-align: center;
 }
-
-
 
 .video-controls {
   display: flex;
@@ -196,7 +221,7 @@ th {
   margin-bottom: 20px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start; /* Align items to the left */
+  align-items: flex-start; 
 }
 
 .test-selection {
@@ -438,103 +463,4 @@ th {
   position: absolute;
   background-color: #ccc;
   cursor: pointer;
-}
-
-.test-content-container {
-  display: flex;
-}
-
-.primary-container,
-.grid-container {
-  flex-grow: 1;
-}
-
-
-.grid-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  grid-template-rows: auto;
-  justify-content: center;
-  margin: 0 auto;
-  
-}
-
-
-.keycap-style {
-  width: 55px;
-  height: 60px;
-  margin: 2.5px;
-  font-size: 16px;
-  text-align: center;
-  color: black;
-  background-color: #cccedb3a;
-}
-
-
-.keycap-top {
-  width: 51.3px;
-  height: 40px;
-}
-
-.numpad-top {
-  height: 40px;
-}
-
-
-.keycap-15u {
-  padding: 0 1.5px;
-  width: 82.5px;
-}
-
-.keycap-175u {
-  padding: 0 2px;
-  width: 96.25px;
-}
-
-.keycap-2u {
-  padding: 0 3px;
-  width: 110px;
-}
-
-.keycap-225u {
-  padding: 0 3.5px;
-  width: 123.75px;
-}
-
-.keycap-275u {
-  padding: 0 4px;
-  width: 151.25px;
-}
-
-.keycap-625u {
-  padding: 0 6px;
-  width: 343.75px;
-}
-
-
-.text-top {
-  margin-top: 10px;
-}
-
-.text-double {
-  margin-top: 10px;
-}
-
-.flex-container {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  align-items: start; 
-  overflow-x: auto; 
-  overflow-y: auto;
-  flex-grow: 1; 
-}
-
-
-.numpad-enter {
-  flex-grow: 2;
-}
-
-.numpad-add {
-  flex-grow: 2;
 }

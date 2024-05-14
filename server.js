@@ -1,7 +1,7 @@
 // Dependencies
 const express = require('express');
 const path = require('path');
-const { gatherHardwareInfo } = require('./apps/hardwareInfo');
+const { gatherHardwareInfo } = require('./apps/hardwareinfo');
 
 const app = express();
 const port = 3000;
