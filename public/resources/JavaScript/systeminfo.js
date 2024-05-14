@@ -39,7 +39,15 @@
             <td></td>
           </tr>
         `;
-  
+
+        document.getElementById('graphicsInfoSection').innerHTML = `
+        <tr>
+            <th>GPU Information</th>
+            <td colspan="3">Type: ${data.graphicsType}, Model: ${data.graphicsModel}, VRAM: ${data.vram}</td>
+            <td></td>
+        </tr>
+    `;
+
         document.getElementById('ramInfoSection').innerHTML = `
           <tr>
             <th>RAM Information</th>

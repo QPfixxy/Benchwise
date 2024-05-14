@@ -31,10 +31,43 @@ async function gatherHardwareInfo() {
     const cpuInfo = cpus[0];
     const systemData = await si.system();
     const memoryData = await si.mem();
-    const batteryData = await si.battery();
     const chassisData = await si.chassis();
     const diskData = await si.diskLayout();
     const mediaDevicesInfo = await getMediaDevicesInfo();
+    const graphicsInfo = await si.graphics();
+
+    // Determine if graphics card is integrated or dedicated
+    let graphicsType = 'N/A';
+    let graphicsModel = 'N/A';
+    let vram = 'N/A';
+
+    if (graphicsInfo.controllers && graphicsInfo.controllers.length > 0) {
+        if (graphicsInfo.controllers[0].vendor.includes('Intel')) {
+            graphicsType = 'Integrated';
+            graphicsModel = getIntelIntegratedGraphicsModel(graphicsInfo.controllers[0].model);
+        } else if (graphicsInfo.controllers[0].vendor.includes('AMD')) {
+            graphicsType = 'Integrated';
+            graphicsModel = getAMDIntegratedGraphicsModel(graphicsInfo.controllers[0].model);
+        } else {
+            graphicsType = 'Dedicated';
+            graphicsModel = graphicsInfo.controllers[0].model;
+            vram = graphicsInfo.controllers[0].vram || 'N/A';
+        }
+    }
+
+    // Get battery data
+    let batteryData = {
+        hasBattery: false,
+        percent: 'N/A',
+        health: 'N/A',
+        voltage: 'N/A',
+    };
+
+    try {
+        batteryData = await si.battery();
+    } catch (error) {
+        console.error('Error fetching battery information:', error.message);
+    }
 
     return {
         hostname: os.hostname(),
@@ -54,12 +87,51 @@ async function gatherHardwareInfo() {
         webcam: mediaDevicesInfo.webcam,
         speaker: mediaDevicesInfo.speaker,
         microphone: mediaDevicesInfo.microphone,
+        graphicsType: graphicsType,
+        graphicsModel: graphicsInfo.controllers && graphicsInfo.controllers.length > 0 ? graphicsInfo.controllers[0].model : 'N/A',
+        vram: vram,
         hardDrives: diskData.map(disk => ({
             totalCapacity: (disk.size / Math.pow(1024, 3)).toFixed(2) + ' GB',
             serialNumber: disk.serialNum || 'N/A',
             modelName: disk.name || 'N/A',
         })),
     };
+}
+
+function getIntelIntegratedGraphicsModel(model) {
+    const intelGraphicsMap = {
+        'Iris Xe Graphics': 'Intel Iris Xe Graphics',
+        'Iris Plus Graphics': 'Intel Iris Plus Graphics',
+        'Iris Graphics': 'Intel Iris Graphics',
+        'UHD Graphics': 'Intel UHD Graphics',
+        'HD Graphics': 'Intel HD Graphics',
+        'Graphics': 'Intel Graphics',
+    };
+    
+    for (const [key, value] of Object.entries(intelGraphicsMap)) {
+        if (model.includes(key)) {
+            return value + ' ' + model.replace(key, '').trim();
+        }
+    }
+    
+    return 'Intel Integrated Graphics';
+}
+
+function getAMDIntegratedGraphicsModel(model) {
+    const amdGraphicsMap = {
+        'Vega': 'AMD Radeon Vega Graphics',
+        'Radeon RX': 'AMD Radeon RX Graphics',
+        'Radeon Pro': 'AMD Radeon Pro Graphics',
+        'Radeon': 'AMD Radeon Graphics',
+    };
+
+    for (const [key, value] of Object.entries(amdGraphicsMap)) {
+        if (model.includes(key)) {
+            return value + ' ' + model.replace(key, '').trim();
+        }
+    }
+    
+    return 'AMD Integrated Graphics';
 }
 
 module.exports = {
