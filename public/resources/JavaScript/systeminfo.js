@@ -35,23 +35,30 @@
         document.getElementById('cpuInfoSection').innerHTML = `
           <tr>
             <th>CPU Information</th>
-            <td colspan="3">Model: ${data.cpuModel}, Speed: ${data.cpuSpeed} MHz, Cores: ${data.cpuCores}</td>
+            <td colspan="3">Model: ${data.cpuModel}, Speed: ${data.cpuSpeed}, Cores: ${data.cpuCores}</td>
             <td></td>
           </tr>
         `;
 
         document.getElementById('graphicsInfoSection').innerHTML = `
-        <tr>
-            <th>GPU Information</th>
-            <td colspan="3">Type: ${data.graphicsType}, Model: ${data.graphicsModel}, VRAM: ${data.vram}</td>
-            <td></td>
-        </tr>
-    `;
+          <tr>
+              <th>Integrated Graphics</th>
+              <td>Type: ${data.integratedGraphicsType}</td>
+              <td>Model: ${data.integratedGraphicsModel}</td>
+              <td></td>
+          </tr>
+          <tr>
+              <th>Dedicated Graphics</th>
+              <td>Type: ${data.dedicatedGraphicsType}</td>
+              <td>Model: ${data.dedicatedGraphicsModel}</td>
+              <td>VRAM: ${data.vram}</td>
+          </tr>`
+          ;
 
         document.getElementById('ramInfoSection').innerHTML = `
           <tr>
             <th>RAM Information</th>
-            <td colspan="3">Total Memory: ${(data.totalMemory / Math.pow(1024, 3)).toFixed(2)} GB, RAM Type: ${data.ramType}, RAM Technology: ${data.ramTechnology}</td>
+            <td colspan="3">Total Memory: ${data.totalMemory}, RAM Type: ${data.ramType}, RAM Profile: ${data.ramProfile}</td>
             <td></td>
           </tr>
         `;

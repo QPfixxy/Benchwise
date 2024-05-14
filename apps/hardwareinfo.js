@@ -28,7 +28,8 @@ async function getMediaDevicesInfo() {
 
 async function gatherHardwareInfo() {
     const cpus = os.cpus();
-    const cpuInfo = cpus[0];
+    const cpuInfo = os.cpus()[0];
+    const cpuData = await si.cpu();
     const systemData = await si.system();
     const memoryData = await si.mem();
     const chassisData = await si.chassis();
@@ -37,22 +38,30 @@ async function gatherHardwareInfo() {
     const graphicsInfo = await si.graphics();
 
     // Determine if graphics card is integrated or dedicated
-    let graphicsType = 'N/A';
-    let graphicsModel = 'N/A';
+    let integratedGraphics = null;
+    let dedicatedGraphics = null;
     let vram = 'N/A';
 
     if (graphicsInfo.controllers && graphicsInfo.controllers.length > 0) {
-        if (graphicsInfo.controllers[0].vendor.includes('Intel')) {
-            graphicsType = 'Integrated';
-            graphicsModel = getIntelIntegratedGraphicsModel(graphicsInfo.controllers[0].model);
-        } else if (graphicsInfo.controllers[0].vendor.includes('AMD')) {
-            graphicsType = 'Integrated';
-            graphicsModel = getAMDIntegratedGraphicsModel(graphicsInfo.controllers[0].model);
-        } else {
-            graphicsType = 'Dedicated';
-            graphicsModel = graphicsInfo.controllers[0].model;
-            vram = graphicsInfo.controllers[0].vram || 'N/A';
-        }
+        graphicsInfo.controllers.forEach(controller => {
+            if (controller.vendor.includes('Intel')) {
+                integratedGraphics = {
+                    type: 'Integrated',
+                    model: getIntelIntegratedGraphicsModel(controller.model)
+                };
+            } else if (controller.vendor.includes('AMD')) {
+                integratedGraphics = {
+                    type: 'Integrated',
+                    model: getAMDIntegratedGraphicsModel(controller.model)
+                };
+            } else {
+                dedicatedGraphics = {
+                    type: 'Dedicated',
+                    model: controller.model,
+                    vram: formatVRAM(controller.vram)
+                };
+            }
+        });
     }
 
     // Get battery data
@@ -74,22 +83,25 @@ async function gatherHardwareInfo() {
         platform: os.platform(),
         architecture: os.arch(),
         cpuModel: cpuInfo.model,
-        cpuSpeed: cpuInfo.speed,
-        cpuCores: cpus.length,
-        totalMemory: memoryData.total,
+        cpuSpeed: (cpuInfo.speed / 1000).toFixed(2) + ' GHz',
+        cpuCores: cpuData.physicalCores,
+        totalMemory: Math.round(memoryData.total / Math.pow(1024, 3)) + ' GB',
         manufacturer: systemData.manufacturer,
         model: systemData.model,
         systemSerialNumber: chassisData.serial || 'N/A',
-        ramType: memoryData.ecc ? 'ECC' : 'Non-ECC',
+        ramProfile: memoryData.ecc ? 'ECC' : 'Non-ECC',
+        ramType: memoryData.type || 'N/A',
         batteryChargeState: batteryData.hasBattery ? batteryData.percent + '%' : 'N/A',
         batteryHealth: batteryData.hasBattery ? (batteryData.health || 'N/A') : 'N/A',
         batteryChargingVoltage: batteryData.hasBattery ? batteryData.voltage : 'N/A',
         webcam: mediaDevicesInfo.webcam,
         speaker: mediaDevicesInfo.speaker,
         microphone: mediaDevicesInfo.microphone,
-        graphicsType: graphicsType,
-        graphicsModel: graphicsInfo.controllers && graphicsInfo.controllers.length > 0 ? graphicsInfo.controllers[0].model : 'N/A',
-        vram: vram,
+        integratedGraphicsType: integratedGraphics ? integratedGraphics.type : 'N/A',
+        integratedGraphicsModel: integratedGraphics ? integratedGraphics.model : 'N/A',
+        dedicatedGraphicsType: dedicatedGraphics ? dedicatedGraphics.type : 'N/A',
+        dedicatedGraphicsModel: dedicatedGraphics ? dedicatedGraphics.model : 'N/A',
+        vram: dedicatedGraphics ? dedicatedGraphics.vram : 'N/A',
         hardDrives: diskData.map(disk => ({
             totalCapacity: (disk.size / Math.pow(1024, 3)).toFixed(2) + ' GB',
             serialNumber: disk.serialNum || 'N/A',
@@ -132,6 +144,14 @@ function getAMDIntegratedGraphicsModel(model) {
     }
     
     return 'AMD Integrated Graphics';
+}
+
+function formatVRAM(vram) {
+    if (vram < 1024) {
+        return vram + ' MB';
+    } else {
+        return (vram / 1024).toFixed(2) + ' GB';
+    }
 }
 
 module.exports = {
