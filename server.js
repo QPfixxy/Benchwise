@@ -20,6 +20,30 @@ app.get('/hardware-info', async (req, res) => {
       res.status(500).json({ error: 'Failed to fetch hardware information' });
   }
 });
+
+function getUSBPorts() {
+  return new Promise((resolve, reject) => {
+      const usbDetect = require('usb-detection');
+      usbDetect.find().then(devices => {
+          const ports = devices.map(device => device.deviceName);
+          resolve(ports);
+      }).catch(error => {
+          console.error('Error fetching USB ports:', error);
+          reject(error);
+      });
+  });
+}
+
+app.get('/usbPorts', async (req, res) => {
+  try {
+      const usbPorts = await getUSBPorts();
+      res.json(usbPorts);
+  } catch (error) {
+      console.error('Error fetching USB ports:', error);
+      res.status(500).json({ error: 'Failed to fetch USB ports' });
+  }
+});
+
         
 // Server Start function
 app.listen(port, () => {

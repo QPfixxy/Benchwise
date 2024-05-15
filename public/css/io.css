@@ -465,3 +465,27 @@ th {
   background-color: #ccc;
   cursor: pointer;
 }
+
+#usbList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.usb-icon {
+  width: 200px;
+  height: 60px;
+  background-color: gray; /* Set initial color to gray */
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-weight: bold;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  transition: background-color 0.3s ease;
+}
+

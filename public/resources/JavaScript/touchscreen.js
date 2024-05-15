@@ -17,8 +17,8 @@ function createTouchPoint() {
   touchPoint.style.left = `${Math.random() * (window.innerWidth - 50)}px`;
   touchPoint.style.top = `${Math.random() * (window.innerHeight - 50)}px`;
   touchPoint.addEventListener('touchstart', function() {
-    if (touchPoint.style.backgroundColor !== 'blue') {
-      touchPoint.style.backgroundColor = 'blue';
+    if (!touchPoint.classList.contains('blue')) {
+      touchPoint.classList.add('blue');
       dotsTouched++;
       if (dotsTouched === 9) {
         setTimeout(endTest, 8000); 
