@@ -1,4 +1,4 @@
-const catBlue = "#0099ff";
+const catBlue = "#007bff";
 
 function allKeycap(color, textColor) {
     $(".keycap-style").css("background-color", color);
