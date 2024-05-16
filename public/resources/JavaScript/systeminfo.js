@@ -35,8 +35,7 @@
         document.getElementById('cpuInfoSection').innerHTML = `
           <tr>
             <th>CPU Information</th>
-            <td colspan="3">Model: ${data.cpuModel}, Speed: ${data.cpuSpeed}, Cores: ${data.cpuCores}</td>
-            <td></td>
+            <td colspan="4">Model: ${data.cpuModel}, Speed: ${data.cpuSpeed}, Cores: ${data.cpuCores}</td>
           </tr>
         `;
 
@@ -44,54 +43,58 @@
           <tr>
               <th>Integrated Graphics</th>
               <td>Type: ${data.integratedGraphicsType}</td>
-              <td>Model: ${data.integratedGraphicsModel}</td>
-              <td></td>
+              <td colspan="3">Model: ${data.integratedGraphicsModel}</td>
           </tr>
           <tr>
               <th>Dedicated Graphics</th>
               <td>Type: ${data.dedicatedGraphicsType}</td>
-              <td>Model: ${data.dedicatedGraphicsModel}</td>
-              <td>VRAM: ${data.vram}</td>
+              <td colspan="3">Model: ${data.dedicatedGraphicsModel},   VRAM: ${data.vram}</td>
           </tr>`
           ;
 
-        document.getElementById('ramInfoSection').innerHTML = `
-          <tr>
-            <th>RAM Information</th>
-            <td colspan="3">Total Memory: ${data.totalMemory}, RAM Type: ${data.ramType}, RAM Profile: ${data.ramProfile}</td>
-            <td></td>
-          </tr>
-        `;
-  
+          document.getElementById('ramInfoSection').innerHTML = `
+            <tr>
+              <th colspan="5">RAM Information</th>
+            </tr>
+            <tr>
+            <td>Total System Capacity:</td>
+            <td colspan="4">${data.totalMemory}</td>
+            </tr>
+            ${data.ramInfo.memorySlots.map((slot, index) => `
+              <tr>
+                <td>Slot ${index + 1}</td>
+                <td>Capacity: ${slot.size}</td>
+                <td>Type: ${slot.type}</td>
+                <td colspan="2">ECC: ${slot.ecc}</td>
+              </tr>
+            `).join('')}
+          `;
+
         document.getElementById('batteryInfoSection').innerHTML = `
           <tr>
             <th>Battery Information</th>
-            <td colspan="3">Charge State: ${data.batteryChargeState}, Battery Health: ${data.batteryHealth}, Average Charging Voltage: ${data.batteryChargingVoltage} volts</td>
-            <td></td>
+            <td colspan="4">Charge State: ${data.batteryChargeState}, Battery Health: ${data.batteryHealth}, Average Charging Voltage: ${data.batteryChargingVoltage} volts</td>
           </tr>
         `;
   
         document.getElementById('webcamInfoSection').innerHTML = `
           <tr>
             <th>Webcam Information</th>
-            <td colspan="3">${data.webcam}</td>
-            <td></td>
+            <td colspan="4">${data.webcam}</td>
           </tr>
         `;
   
         document.getElementById('speakerInfoSection').innerHTML = `
           <tr>
             <th>Speaker Information</th>
-            <td colspan="3">${data.speaker}</td>
-            <td></td>
+            <td colspan="4">${data.speaker}</td>
           </tr>
         `;
   
         document.getElementById('microphoneInfoSection').innerHTML = `
           <tr>
             <th>Microphone Information</th>
-            <td colspan="3">${data.microphone}</td>
-            <td></td>
+            <td colspan="4">${data.microphone}</td>
           </tr>
         `;
   
