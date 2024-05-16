@@ -1,4 +1,5 @@
 const os = require('os');
+const fs = require('fs');
 const si = require('systeminformation');
 
 async function getMediaDevicesInfo() {
@@ -32,10 +33,10 @@ async function gatherHardwareInfo() {
     const cpuData = await si.cpu();
     const systemData = await si.system();
     const memoryData = await si.mem();
-    const chassisData = await si.chassis();
     const diskData = await si.diskLayout();
     const mediaDevicesInfo = await getMediaDevicesInfo();
     const graphicsInfo = await si.graphics();
+    const baseboardData = await si.baseboard();
 
     // Determine if graphics card is integrated or dedicated
     let integratedGraphics = null;
@@ -71,9 +72,17 @@ async function gatherHardwareInfo() {
         health: 'N/A',
         voltage: 'N/A',
     };
-
+    
     try {
-        batteryData = await si.battery();
+        const batteryInfo = await si.battery();
+        batteryData.hasBattery = batteryInfo.hasBattery;
+        batteryData.percent = batteryInfo.percent;
+        batteryData.voltage = batteryInfo.voltage;
+    
+        if (batteryInfo.currentCapacity && batteryInfo.designedCapacity) {
+            const healthPercentage = (batteryInfo.currentCapacity / batteryInfo.designedCapacity) * 100;
+            batteryData.health = `${healthPercentage.toFixed(2)}%`;
+        }
     } catch (error) {
         console.error('Error fetching battery information:', error.message);
     }
@@ -88,7 +97,8 @@ async function gatherHardwareInfo() {
         totalMemory: Math.round(memoryData.total / Math.pow(1024, 3)) + ' GB',
         manufacturer: systemData.manufacturer,
         model: systemData.model,
-        systemSerialNumber: chassisData.serial || 'N/A',
+        systemSerialNumber: systemData.serial || 'N/A',
+        motherboardSerialNumber: baseboardData.serial || 'N/A', // Added motherboard serial number
         ramProfile: memoryData.ecc ? 'ECC' : 'Non-ECC',
         ramType: memoryData.type || 'N/A',
         batteryChargeState: batteryData.hasBattery ? batteryData.percent + '%' : 'N/A',
