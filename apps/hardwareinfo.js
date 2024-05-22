@@ -153,7 +153,7 @@ async function gatherHardwareInfo() {
 
     const ramInfo = {
         memorySlots: getMemoryInfo(memoryData),
-        totalSize: `${Math.round(totalMemory / Math.pow(1024, 3))} GB`
+        totalSize: `${Math.ceil(totalMemory / Math.pow(1024, 3))} GB`
     };
 
 

@@ -100,7 +100,7 @@ function displayHardwareInfo(data) {
         <td>Slot ${index + 1}</td>
         <td>Capacity: ${slot.size}</td>
         <td>Type: ${slot.type}</td>
-        <td colspan="2">ECC: ${slot.ecc}</td>
+        <td colspan="2">Profile: ${slot.ecc}</td>
       </tr>
     `).join('')}
   `;
@@ -183,7 +183,7 @@ function exportPDF(data, serialNumber) {
     [`VRAM: ${data.vram}`],
     [{content: 'RAM Information', styles: {fontWeight: 'bold', halign: 'center'}}],
     [`Total System Memory: ${data.ramInfo.totalSize}`],
-    [data.ramInfo.memorySlots.map((slot, index) => `RAM Slot ${index + 1}: Capacity: ${slot.size}, Type: ${slot.type}, ECC: ${slot.ecc}`).join('\n')],
+    [data.ramInfo.memorySlots.map((slot, index) => `RAM Slot ${index + 1}: Capacity: ${slot.size}, Type: ${slot.type}, Profile: ${slot.ecc}`).join('\n')],
     [{content: 'Battery Information', styles: {fontWeight: 'bold', halign: 'center'}}],
     [`Charge State: ${data.batteryChargeState}`],
     [`Battery Health: ${data.batteryHealth}`],
