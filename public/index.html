@@ -6,6 +6,8 @@
   <title>System Specification Sheet</title>
   <link rel="stylesheet" href="css/standard.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <style>
   </style>
 </head>
@@ -20,9 +22,17 @@
       <a href="/io" >IO Interfaces</a>
       <a href="/hardware" >Hardware</a>
       <a href="/tools">Tools</a>
+      <a href="/logs">Logs</a>
     </div>
+    <div id="myModal" class="modal">
+      <div class="modal-content">
+        <input type="text" id="serialNumberInput" placeholder="Enter Regency Serial Number (0000000-0000000)">
+        <button id="submitSerialNumber">Generate System Information</button>
+      </div>
+    </div>
+    <div id="loadingText" style="display: none; text-align: center; margin-top: 20px;"><h5>Generating Report...</h5></div>
 
-     <!-- Move the table structure here -->
+
      <table id="hardwareTable">
         <tbody id="systemInfoSection">
         </tbody>

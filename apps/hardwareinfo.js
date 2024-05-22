@@ -164,7 +164,6 @@ async function gatherHardwareInfo() {
         cpuModel: cpuInfo.model,
         cpuSpeed: (cpuInfo.speed / 1000).toFixed(2) + ' GHz',
         cpuCores: cpuData.physicalCores,
-        totalMemory: Math.round(RamTotal.total / Math.pow(1024, 3)) + ' GB',
         manufacturer: systemData.manufacturer,
         model: systemData.model,
         systemSerialNumber: systemSerialNumber, 
