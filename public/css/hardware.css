@@ -69,7 +69,10 @@ body {
     margin-top: 20px;
   }
 
-  
+  .progress-container {
+    margin-top: 20px;
+}
+
   .test-nav {
     display: flex;
     gap: 5px;
@@ -179,11 +182,11 @@ body {
   }
   
   .test-pass {
-    background-color: #4caf50;
+    background-color: #7cde80;
   }
   
   .test-fail {
-    background-color: #f44336;
+    background-color: #d66a63;
   }
   
   .test-not-run {
