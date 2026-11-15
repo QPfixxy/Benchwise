@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { giveToOwner } = require('./elevation');
 
-const SETTINGS_FILE = 'qudit-settings.json';
+const SETTINGS_FILE = 'benchwise-settings.json';
+const LEGACY_SETTINGS_FILE = 'qudit-settings.json'; // Benchwise was called Qudit before 2.1
 
 const TEST_IDS = ['camera', 'microphone', 'speakers', 'keyboard', 'display', 'touchscreen', 'ports', 'cpu', 'memory'];
 
@@ -13,7 +14,7 @@ const DEFAULTS = Object.freeze({
   defaultTechnician: '',
   assetTagLabel: 'Asset Tag',
   // Regex (without ^ $) the asset tag must match. Empty = any safe tag.
-  // The original Qudit format was: \d{7}-\d{7}
+  // The original Qudit 1.x format was: \d{7}-\d{7}
   assetTagPattern: '',
   reportsDir: '', // empty = <data dir>/reports
   enabledTests: TEST_IDS.reduce((acc, id) => ({ ...acc, [id]: true }), {}),
@@ -21,18 +22,46 @@ const DEFAULTS = Object.freeze({
 
 /**
  * Where settings and reports live, in priority order:
- *  1. QUDIT_DATA_DIR env var
- *  2. Portable mode: a "qudit-data" folder next to the executable (created
+ *  1. BENCHWISE_DATA_DIR env var (QUDIT_DATA_DIR still accepted)
+ *  2. Portable mode: a "benchwise-data" folder next to the executable (created
  *     by the user, or automatically for the Windows portable build). This is
- *     what makes running from a USB stick keep everything on the stick.
- *  3. The OS per-user app data folder.
+ *     what makes running from a USB stick keep everything on the stick. A
+ *     "qudit-data" folder from before the rename is renamed in place.
+ *  3. The OS per-user app data folder. Settings and reports from the old
+ *     "Qudit" folder are moved over on first launch.
  */
 function resolveDataDir(app) {
-  if (process.env.QUDIT_DATA_DIR) return path.resolve(process.env.QUDIT_DATA_DIR);
+  const fromEnv = process.env.BENCHWISE_DATA_DIR || process.env.QUDIT_DATA_DIR;
+  if (fromEnv) return path.resolve(fromEnv);
   const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
-  const portable = path.join(exeDir, 'qudit-data');
+  const portable = path.join(exeDir, 'benchwise-data');
+  const legacyPortable = path.join(exeDir, 'qudit-data');
+  if (!fs.existsSync(portable) && fs.existsSync(legacyPortable)) {
+    try {
+      fs.renameSync(legacyPortable, portable);
+    } catch {
+      return legacyPortable; // read-only stick etc.: keep using the old folder
+    }
+  }
   if (process.env.PORTABLE_EXECUTABLE_DIR || fs.existsSync(portable)) return portable;
-  return app.getPath('userData');
+  const userData = app.getPath('userData');
+  migrateLegacyUserData(path.join(app.getPath('appData'), 'Qudit'), userData);
+  return userData;
+}
+
+/** One-time move of settings + reports from the pre-rename "Qudit" app folder. */
+function migrateLegacyUserData(legacyDir, dataDir) {
+  try {
+    const legacySettings = path.join(legacyDir, LEGACY_SETTINGS_FILE);
+    if (!fs.existsSync(legacySettings) || fs.existsSync(path.join(dataDir, SETTINGS_FILE))) return;
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.copyFileSync(legacySettings, path.join(dataDir, SETTINGS_FILE));
+    const legacyReports = path.join(legacyDir, 'reports');
+    const reports = path.join(dataDir, 'reports');
+    if (fs.existsSync(legacyReports) && !fs.existsSync(reports)) fs.renameSync(legacyReports, reports);
+  } catch {
+    /* best effort: worst case the operator re-enters settings */
+  }
 }
 
 class Settings {
@@ -44,7 +73,9 @@ class Settings {
 
   #load() {
     try {
-      const parsed = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+      const legacy = path.join(this.dataDir, LEGACY_SETTINGS_FILE);
+      const file = !fs.existsSync(this.file) && fs.existsSync(legacy) ? legacy : this.file;
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
       return sanitize({ ...DEFAULTS, ...parsed, enabledTests: { ...DEFAULTS.enabledTests, ...parsed.enabledTests } });
     } catch {
       return sanitize({ ...DEFAULTS });
@@ -88,4 +119,4 @@ function sanitize(v) {
   };
 }
 
-module.exports = { Settings, resolveDataDir, TEST_IDS, DEFAULTS };
+module.exports = { Settings, resolveDataDir, migrateLegacyUserData, TEST_IDS, DEFAULTS };

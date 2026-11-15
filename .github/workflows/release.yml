@@ -20,13 +20,13 @@ jobs:
         include:
           - os: windows-latest
             target: --win
-            exe: dist/win-unpacked/Qudit.exe
+            exe: dist/win-unpacked/Benchwise.exe
           - os: macos-latest
             target: --mac
-            exe: dist/mac-arm64/Qudit.app/Contents/MacOS/Qudit
+            exe: dist/mac-arm64/Benchwise.app/Contents/MacOS/Benchwise
           - os: ubuntu-latest
             target: --linux
-            exe: dist/linux-unpacked/qudit
+            exe: dist/linux-unpacked/benchwise
     runs-on: ${{ matrix.os }}
     env:
       ELECTRON_DISABLE_SANDBOX: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
@@ -87,10 +87,10 @@ jobs:
         env:
           NOTARIZED: ${{ secrets.APPLE_API_KEY_P8 != '' && secrets.MAC_CERT_P12_BASE64 != '' }}
         run: |
-          codesign -dv --verbose=2 dist/mac-arm64/Qudit.app 2>&1 | grep -E "Authority|TeamIdentifier|Signature|flags" || true
+          codesign -dv --verbose=2 dist/mac-arm64/Benchwise.app 2>&1 | grep -E "Authority|TeamIdentifier|Signature|flags" || true
           if [ "$NOTARIZED" = "true" ]; then
-            xcrun stapler validate dist/mac-arm64/Qudit.app
-            spctl --assess --type execute --verbose dist/mac-arm64/Qudit.app
+            xcrun stapler validate dist/mac-arm64/Benchwise.app
+            spctl --assess --type execute --verbose dist/mac-arm64/Benchwise.app
           fi
 
       - name: Smoke test the packaged app
@@ -98,12 +98,12 @@ jobs:
         run: |
           mkdir -p pkg-check/smoke pkg-check/ui
           run() { if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "$@"; else "$@"; fi; }
-          QUDIT_DATA_DIR=pkg-check/sd run "${{ matrix.exe }}" --smoke-test=pkg-check/smoke
-          QUDIT_DATA_DIR=pkg-check/ui/data run "${{ matrix.exe }}" --ui-check=pkg-check/ui
+          BENCHWISE_DATA_DIR=pkg-check/sd run "${{ matrix.exe }}" --smoke-test=pkg-check/smoke
+          BENCHWISE_DATA_DIR=pkg-check/ui/data run "${{ matrix.exe }}" --ui-check=pkg-check/ui
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qudit-build-${{ matrix.os }}
+          name: benchwise-build-${{ matrix.os }}
           path: |
             dist/*.exe
             dist/*.dmg

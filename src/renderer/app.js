@@ -7,7 +7,7 @@ import finish from './views/finish.js';
 import reports from './views/reports.js';
 import settingsView from './views/settings.js';
 
-const api = window.qudit;
+const api = window.benchwise;
 
 export const state = {
   info: null,
@@ -280,7 +280,7 @@ function renderNav() {
     // null = not applicable (macOS); false = should have admin but doesn't.
     if (state.info.elevated === true) foot.append(el('div', { class: 'pass-text' }, '✓ Administrator'));
     if (state.info.elevated === false) {
-      foot.append(el('div', { class: 'warn-text', title: 'Serials, memory module details and drive health may be missing. Restart Qudit as administrator.' }, '⚠ Limited mode (not administrator)'));
+      foot.append(el('div', { class: 'warn-text', title: 'Serials, memory module details and drive health may be missing. Restart Benchwise as administrator.' }, '⚠ Limited mode (not administrator)'));
     }
   }
 }

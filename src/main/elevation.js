@@ -7,8 +7,8 @@
 //           except report whether we got it.
 //  Linux    No manifest equivalent. The packaged app asks once, then relaunches
 //           itself through pkexec (the desktop's password prompt). If the
-//           operator declines, Qudit runs in limited mode. On a live USB that
-//           starts Qudit as root, nothing is asked.
+//           operator declines, Benchwise runs in limited mode. On a live USB that
+//           starts Benchwise as root, nothing is asked.
 //  macOS    Not needed: drive health and inventory work without root.
 //
 // Why: firmware serials, memory-module details (DMI) and SMART data are
@@ -36,12 +36,12 @@ async function isElevated() {
  */
 async function ensureLinuxElevation({ app, dialog, dataDir }) {
   if (process.platform !== 'linux' || process.getuid?.() === 0) return 'continue';
-  if (!app.isPackaged || process.env.QUDIT_NO_ELEVATE === '1' || process.argv.includes('--limited')) return 'continue';
+  if (!app.isPackaged || process.env.BENCHWISE_NO_ELEVATE === '1' || process.argv.includes('--limited')) return 'continue';
 
   const { response } = await dialog.showMessageBox({
     type: 'question',
-    title: 'Qudit',
-    message: 'Run Qudit as administrator?',
+    title: 'Benchwise',
+    message: 'Run Benchwise as administrator?',
     detail:
       'Administrator access is needed to read the system serial number, memory module details and drive health (SMART). ' +
       'Without it, those fields will be missing from the report.',
@@ -60,9 +60,9 @@ async function ensureLinuxElevation({ app, dialog, dataDir }) {
   const env = [
     ...pass,
     'APPIMAGE_EXTRACT_AND_RUN=1',
-    `QUDIT_DATA_DIR=${dataDir}`, // keep settings/reports in the operator's folder…
-    `QUDIT_OWNER_UID=${process.getuid()}`, // …and owned by the operator, not root
-    `QUDIT_OWNER_GID=${process.getgid()}`,
+    `BENCHWISE_DATA_DIR=${dataDir}`, // keep settings/reports in the operator's folder…
+    `BENCHWISE_OWNER_UID=${process.getuid()}`, // …and owned by the operator, not root
+    `BENCHWISE_OWNER_GID=${process.getgid()}`,
   ];
 
   const code = await new Promise((resolve) => {
@@ -74,11 +74,11 @@ async function ensureLinuxElevation({ app, dialog, dataDir }) {
   if (code === 126 || code === 127 || code === -1) {
     await dialog.showMessageBox({
       type: 'warning',
-      title: 'Qudit',
+      title: 'Benchwise',
       message: 'Running in limited mode',
       detail:
         code === -1
-          ? 'pkexec is not available on this system. Start Qudit with sudo for a complete report.'
+          ? 'pkexec is not available on this system. Start Benchwise with sudo for a complete report.'
           : 'Administrator access was not granted. Serials, memory details and drive health may be missing.',
     });
     return 'continue';
@@ -88,8 +88,8 @@ async function ensureLinuxElevation({ app, dialog, dataDir }) {
 
 /** When running elevated on behalf of a user, hand created files back to them. */
 function giveToOwner(...paths) {
-  const uid = Number(process.env.QUDIT_OWNER_UID);
-  const gid = Number(process.env.QUDIT_OWNER_GID);
+  const uid = Number(process.env.BENCHWISE_OWNER_UID);
+  const gid = Number(process.env.BENCHWISE_OWNER_GID);
   if (!Number.isInteger(uid) || !Number.isInteger(gid) || process.getuid?.() !== 0) return;
   for (const p of paths) {
     try {

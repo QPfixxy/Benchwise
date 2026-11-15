@@ -9,7 +9,7 @@ export default {
   id: 'ports',
   name: 'USB Ports',
   description:
-    'Plug the Qudit test drive into each USB port, one at a time. For every port Qudit records the physical port, link speed, read/write speed and a data-integrity check, then ejects the drive so you can move to the next port.',
+    'Plug the Benchwise test drive into each USB port, one at a time. For every port Benchwise records the physical port, link speed, read/write speed and a data-integrity check, then ejects the drive so you can move to the next port.',
 
   mount(root, ctx) {
     const api = ctx.api.ports;
@@ -180,7 +180,7 @@ export default {
     async function prepare(v) {
       if (
         !confirm(
-          `Make "${v.label}" a Qudit test drive?\n\nThis adds a QUDIT-TEST-DRIVE folder (about 64 MB) and a small marker file. Nothing on the drive is erased or reformatted.`,
+          `Make "${v.label}" a Benchwise test drive?\n\nThis adds a BENCHWISE-TEST-DRIVE folder (about 64 MB) and a small marker file. Nothing on the drive is erased or reformatted.`,
         )
       )
         return;
@@ -234,7 +234,7 @@ export default {
         el(
           'p',
           { class: 'muted small' },
-          'Any USB flash drive with ~100 MB free works. A USB 3 drive lets Qudit tell USB 3 ports from USB 2 ones by speed. Keep it labelled as the bench test drive.',
+          'Any USB flash drive with ~100 MB free works. A USB 3 drive lets Benchwise tell USB 3 ports from USB 2 ones by speed. Keep it labelled as the bench test drive.',
         ),
         el('button', { class: 'btn', onclick: findVolumes }, 'Find drives'),
         volumesBox,

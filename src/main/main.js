@@ -18,7 +18,7 @@ const { ReportStore, buildAudit } = require('./reports/store');
 const { renderReportHtml } = require('./reports/template');
 
 const RENDERER_ROOT = path.join(__dirname, '..', 'renderer');
-const APP_ORIGIN = 'app://qudit';
+const APP_ORIGIN = 'app://benchwise';
 const smokeArgs = process.argv.filter((a) => a.startsWith('--smoke-test'));
 const smokeArg = smokeArgs.find((a) => a.includes('=')) || smokeArgs[0];
 
@@ -33,7 +33,7 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
 // processes on Windows: first the GPU process ("GPU process launch failed:
 // error_code=18"), then renderers (every page load -> ERR_FAILED). So the
 // Chromium sandbox is turned off there. Trade-off: the sandbox is a second line
-// of defence against hostile web content; Qudit only loads its own bundled
+// of defence against hostile web content; Benchwise only loads its own bundled
 // pages, and context isolation + the narrow preload API still apply.
 if (process.platform === 'win32' && app.isPackaged) {
   app.commandLine.appendSwitch('no-sandbox');
@@ -41,12 +41,12 @@ if (process.platform === 'win32' && app.isPackaged) {
 
 // If a GPU/renderer/utility process dies, say which and why (instead of a
 // bare ERR_FAILED from whatever page it was serving).
-app.on('child-process-gone', (_e, d) => console.error(`[qudit] child process gone: ${d.type} reason=${d.reason} exitCode=${d.exitCode}`));
-app.on('render-process-gone', (_e, _wc, d) => console.error(`[qudit] renderer gone: reason=${d.reason} exitCode=${d.exitCode}`));
+app.on('child-process-gone', (_e, d) => console.error(`[benchwise] child process gone: ${d.type} reason=${d.reason} exitCode=${d.exitCode}`));
+app.on('render-process-gone', (_e, _wc, d) => console.error(`[benchwise] renderer gone: reason=${d.reason} exitCode=${d.exitCode}`));
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
-  { scheme: 'qudit-pdf', privileges: { standard: true, secure: true } },
+  { scheme: 'benchwise-pdf', privileges: { standard: true, secure: true } },
 ]);
 
 let mainWindow = null;
@@ -59,7 +59,7 @@ let stress = null;
 
 /** Starts a script in an Electron utility process (separate OS process). */
 function forkUtility(file) {
-  const child = utilityProcess.fork(file, [], { serviceName: 'Qudit stress test', stdio: 'ignore' });
+  const child = utilityProcess.fork(file, [], { serviceName: 'Benchwise stress test', stdio: 'ignore' });
   let ready = false;
   const queue = [];
   child.once('spawn', () => {
@@ -74,7 +74,7 @@ function forkUtility(file) {
 }
 
 const appInfo = () => ({
-  name: 'Qudit',
+  name: 'Benchwise',
   version: app.getVersion(),
   platform: `${process.platform}-${process.arch}`,
   electron: process.versions.electron,
@@ -109,7 +109,7 @@ let logoDataUrl = null;
 function logo() {
   if (logoDataUrl === null) {
     try {
-      logoDataUrl = `data:image/png;base64,${fs.readFileSync(path.join(RENDERER_ROOT, 'assets', 'qudit.png')).toString('base64')}`;
+      logoDataUrl = `data:image/png;base64,${fs.readFileSync(path.join(RENDERER_ROOT, 'assets', 'logo.png')).toString('base64')}`;
     } catch {
       logoDataUrl = '';
     }
@@ -125,8 +125,8 @@ let pdfSession = null;
 
 function getPdfSession() {
   if (!pdfSession) {
-    pdfSession = session.fromPartition('qudit-pdf'); // no "persist:" = memory only
-    pdfSession.protocol.handle('qudit-pdf', (request) => {
+    pdfSession = session.fromPartition('benchwise-pdf'); // no "persist:" = memory only
+    pdfSession.protocol.handle('benchwise-pdf', (request) => {
       const html = pdfPages.get(new URL(request.url).hostname);
       return html
         ? new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
@@ -142,7 +142,7 @@ async function renderPdf(audit) {
   pdfPages.set(id, html);
   const win = new BrowserWindow({ show: false, webPreferences: { session: getPdfSession(), sandbox: true, javascript: false } });
   try {
-    await win.loadURL(`qudit-pdf://${id}/report.html`);
+    await win.loadURL(`benchwise-pdf://${id}/report.html`);
     return await win.webContents.printToPDF({ pageSize: 'Letter', printBackground: true });
   } finally {
     win.destroy();
@@ -236,7 +236,7 @@ function registerAppProtocol() {
   protocol.handle('app', (request) => {
     const { host, pathname } = new URL(request.url);
     const file = path.normalize(path.join(RENDERER_ROOT, decodeURIComponent(pathname)));
-    if (host !== 'qudit' || !file.startsWith(RENDERER_ROOT + path.sep)) {
+    if (host !== 'benchwise' || !file.startsWith(RENDERER_ROOT + path.sep)) {
       return new Response('Not found', { status: 404 });
     }
     return net.fetch(pathToFileURL(file).toString());
@@ -268,7 +268,7 @@ function createWindow() {
     height: 860,
     minWidth: 960,
     minHeight: 640,
-    title: 'Qudit',
+    title: 'Benchwise',
     backgroundColor: '#0f1115',
     show: false,
     webPreferences: {
@@ -305,7 +305,7 @@ function createWindow() {
 async function runSmokeTest() {
   const outDir = smokeArg.includes('=')
     ? path.resolve(smokeArg.split('=')[1])
-    : fs.mkdtempSync(path.join(os.tmpdir(), 'qudit-smoke-'));
+    : fs.mkdtempSync(path.join(os.tmpdir(), 'benchwise-smoke-'));
   const smokeStore = new ReportStore(() => outDir, renderPdf);
   const hw = await collectHardware();
   const audit = buildAudit({

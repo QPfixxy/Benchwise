@@ -2,7 +2,7 @@
 
 // "Test drive" port test. Any flash drive is prepared once (a marker file and
 // a 64 MiB reference file are added; nothing is erased). Plugged into each
-// port in turn, Qudit then:
+// port in turn, Benchwise then:
 //   1. identifies the physical port + negotiated link speed (usbtree.js)
 //   2. reads the reference file and checks its SHA-256: proves data crossed
 //      that port intact, and measures uncached read speed (fresh mount)
@@ -16,8 +16,10 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 
-const MARKER = 'QUDIT-TEST-DRIVE.json';
-const DATA_DIR = 'QUDIT-TEST-DRIVE';
+const MARKER = 'BENCHWISE-TEST-DRIVE.json';
+const DATA_DIR = 'BENCHWISE-TEST-DRIVE';
+// Drives prepared before the rename (Qudit) keep working without re-preparing.
+const LEGACY_MARKER = 'QUDIT-TEST-DRIVE.json';
 const READ_FILE = 'read-test.bin';
 const WRITE_FILE = 'write-test.tmp';
 const READ_BYTES = 64 * 1024 * 1024;
@@ -105,13 +107,15 @@ async function externalMounts() {
 }
 
 async function readMarker(mount) {
-  try {
-    const m = JSON.parse(await within(fsp.readFile(path.join(mount, MARKER), 'utf8'), 2000));
-    if (m?.qudit !== 'test-drive' || !/^[0-9a-f]{64}$/.test(m.sha256)) return null;
-    return m;
-  } catch {
-    return null;
+  for (const [file, key] of [[MARKER, 'benchwise'], [LEGACY_MARKER, 'qudit']]) {
+    try {
+      const m = JSON.parse(await within(fsp.readFile(path.join(mount, file), 'utf8'), 2000));
+      if (m?.[key] === 'test-drive' && /^[0-9a-f]{64}$/.test(m.sha256)) return m;
+    } catch {
+      /* not this marker */
+    }
   }
+  return null;
 }
 
 async function volumeInfo(mount) {
@@ -164,14 +168,14 @@ async function prepareDrive(mount, { mountsFn = externalMounts, bytes = READ_BYT
     await fh.close();
   }
   const marker = {
-    qudit: 'test-drive',
+    benchwise: 'test-drive',
     version: 1,
     id: crypto.randomUUID(),
     created: new Date().toISOString(),
     readFile: `${DATA_DIR}/${READ_FILE}`,
     bytes,
     sha256: hash.digest('hex'),
-    note: 'Used by Qudit to test USB ports. Safe to delete the QUDIT-TEST-DRIVE folder and this file.',
+    note: 'Used by Benchwise to test USB ports. Safe to delete the BENCHWISE-TEST-DRIVE folder and this file.',
   };
   await fsp.writeFile(path.join(mount, MARKER), JSON.stringify(marker, null, 2));
   return marker;
@@ -186,7 +190,11 @@ async function benchmark(mount, marker) {
   try {
     // Read + verify. The drive was just mounted, so this read comes from the
     // device rather than the OS cache.
-    const file = path.join(mount, ...String(marker.readFile || `${DATA_DIR}/${READ_FILE}`).split('/'));
+    const rel = String(marker.readFile || `${DATA_DIR}/${READ_FILE}`).split('/');
+    const file = path.join(mount, ...rel);
+    if (path.relative(mount, file).startsWith('..') || path.isAbsolute(path.relative(mount, file))) {
+      throw new Error('test-drive marker points outside the drive');
+    }
     const hash = crypto.createHash('sha256');
     let total = 0;
     const t0 = performance.now();
@@ -207,7 +215,7 @@ async function benchmark(mount, marker) {
     if (!result.verified) result.error = 'Reference file did not match: data corrupted on this port, cable or drive.';
 
     // Write (fsync so the number reflects the device, not the cache).
-    const wfile = path.join(mount, DATA_DIR, WRITE_FILE);
+    const wfile = path.join(path.dirname(file), WRITE_FILE); // the drive's own test folder (old drives: QUDIT-TEST-DRIVE)
     const data = crypto.randomBytes(CHUNK);
     const t1 = performance.now();
     const wh = await fsp.open(wfile, 'w');

@@ -83,7 +83,7 @@ test('identifyStick: diff on first insertion, remembered serial afterwards', () 
 });
 
 function tmpDrive() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'qudit-drive-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'benchwise-drive-'));
 }
 
 test('prepare + benchmark: verifies data and measures speed; detects corruption', async () => {
@@ -95,16 +95,42 @@ test('prepare + benchmark: verifies data and measures speed; detects corruption'
   const ok = await td.benchmark(mount, marker);
   assert.equal(ok.verified, true, ok.error);
   assert.ok(ok.readMBps > 0 && ok.writeMBps > 0);
-  assert.equal(fs.existsSync(path.join(mount, 'QUDIT-TEST-DRIVE', 'write-test.tmp')), false); // cleaned up
+  assert.equal(fs.existsSync(path.join(mount, 'BENCHWISE-TEST-DRIVE', 'write-test.tmp')), false); // cleaned up
 
   // Flip one byte: the integrity check must fail.
-  const f = path.join(mount, 'QUDIT-TEST-DRIVE', 'read-test.bin');
+  const f = path.join(mount, 'BENCHWISE-TEST-DRIVE', 'read-test.bin');
   const buf = fs.readFileSync(f);
   buf[1000] ^= 0xff;
   fs.writeFileSync(f, buf);
   const bad = await td.benchmark(mount, marker);
   assert.equal(bad.verified, false);
   assert.match(bad.error, /corrupt/i);
+});
+
+test('drives prepared under the old Qudit name are still recognized and tested', async () => {
+  const mount = tmpDrive();
+  const mountsFn = async () => [mount];
+  const marker = await td.prepareDrive(mount, { mountsFn, bytes: 1024 * 1024 });
+  // Lay the drive out the way Qudit 2.0 did.
+  fs.renameSync(path.join(mount, 'BENCHWISE-TEST-DRIVE'), path.join(mount, 'QUDIT-TEST-DRIVE'));
+  fs.rmSync(path.join(mount, td.MARKER));
+  const { benchwise, ...rest } = marker;
+  const legacy = { ...rest, qudit: 'test-drive', readFile: 'QUDIT-TEST-DRIVE/read-test.bin' };
+  fs.writeFileSync(path.join(mount, 'QUDIT-TEST-DRIVE.json'), JSON.stringify(legacy));
+
+  const found = await td.findTestDrives(mountsFn);
+  assert.equal(found.length, 1);
+  const r = await td.benchmark(mount, found[0].marker);
+  assert.equal(r.verified, true, r.error);
+  assert.ok(r.writeMBps > 0);
+  assert.equal(fs.existsSync(path.join(mount, 'BENCHWISE-TEST-DRIVE')), false); // wrote inside the old folder
+});
+
+test('a marker pointing outside the drive is rejected', async () => {
+  const mount = tmpDrive();
+  const r = await td.benchmark(mount, { readFile: '../../etc/hosts', bytes: 1, sha256: 'a'.repeat(64) });
+  assert.equal(r.verified, false);
+  assert.match(r.error, /outside the drive/);
 });
 
 test('prepare refuses volumes that are not in the candidate list', async () => {

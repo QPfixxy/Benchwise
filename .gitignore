@@ -4,6 +4,7 @@ node_modules/
 coverage/
 
 # Local data: settings and audit reports created when running from the repo
+/benchwise-data/
 /qudit-data/
 /reports/
 

@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const { overallStatus, validateAssetTag, TEST_STATUSES } = require('../hardware/normalize');
 const { giveToOwner } = require('../elevation');
 
-const SCHEMA = 'qudit.audit';
+const SCHEMA = 'qudit.audit'; // kept from before the Benchwise rename so existing records stay valid
 const SCHEMA_VERSION = 1;
 
 function stamp(iso) {

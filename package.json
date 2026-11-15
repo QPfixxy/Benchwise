@@ -1,6 +1,6 @@
 {
-  "name": "qudit",
-  "productName": "Qudit",
+  "name": "benchwise",
+  "productName": "Benchwise",
   "version": "2.0.2",
   "description": "Lightweight ITAD hardware information and test tool for auditors and testers.",
   "main": "src/main/main.js",
@@ -31,7 +31,7 @@
   },
   "build": {
     "appId": "io.github.qudit",
-    "productName": "Qudit",
+    "productName": "Benchwise",
     "files": [
       "src/**/*",
       "package.json",
@@ -50,7 +50,7 @@
       "requestedExecutionLevel": "requireAdministrator"
     },
     "portable": {
-      "artifactName": "Qudit-${version}-windows-portable.exe",
+      "artifactName": "Benchwise-${version}-windows-portable.exe",
       "requestExecutionLevel": "admin"
     },
     "mac": {
@@ -65,8 +65,8 @@
       ],
       "category": "public.app-category.utilities",
       "extendInfo": {
-        "NSCameraUsageDescription": "Qudit uses the camera to run the webcam test.",
-        "NSMicrophoneUsageDescription": "Qudit uses the microphone to run the microphone test."
+        "NSCameraUsageDescription": "Benchwise uses the camera to run the webcam test.",
+        "NSMicrophoneUsageDescription": "Benchwise uses the microphone to run the microphone test."
       },
       "icon": "build/icon.png",
       "hardenedRuntime": true,
@@ -81,13 +81,13 @@
       ],
       "category": "Utility",
       "icon": "build/icon.png",
-      "executableName": "qudit",
-      "artifactName": "Qudit-${version}-linux-${arch}.${ext}"
+      "executableName": "benchwise",
+      "artifactName": "Benchwise-${version}-linux-${arch}.${ext}"
     },
     "asarUnpack": [
       "src/main/stress/**"
     ],
-    "artifactName": "Qudit-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Benchwise-${version}-${os}-${arch}.${ext}",
     "publish": [
       {
         "provider": "github",
@@ -95,19 +95,19 @@
       }
     ],
     "nsis": {
-      "artifactName": "Qudit-${version}-windows-setup.exe",
+      "artifactName": "Benchwise-${version}-windows-setup.exe",
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true
     },
     "dmg": {
-      "artifactName": "Qudit-${version}-mac-${arch}.${ext}"
+      "artifactName": "Benchwise-${version}-mac-${arch}.${ext}"
     }
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/qpfixxy/Qudit.git"
+    "url": "https://github.com/qpfixxy/Benchwise.git"
   },
-  "author": "Qudit contributors",
-  "homepage": "https://github.com/qpfixxy/Qudit"
+  "author": "Benchwise contributors",
+  "homepage": "https://github.com/qpfixxy/Benchwise"
 }

@@ -1,6 +1,6 @@
-# Qudit Roadmap
+# Benchwise Roadmap
 
-Qudit 2.0 replaced the local web server with a desktop app. It also fixed the inventory data and made every functional test produce a recorded result. This document is the plan for what is still missing. It covers the former placeholders (stress tests, port detection, the Tools page) and the features that turn Qudit from a bench tool into a shop-wide system.
+Benchwise (then called Qudit) 2.0 replaced the local web server with a desktop app. It also fixed the inventory data and made every functional test produce a recorded result. This document is the plan for what is still missing. It covers the former placeholders (stress tests, port detection, the Tools page) and the features that turn Benchwise from a bench tool into a shop-wide system.
 
 Guiding rules for everything below:
 
@@ -50,7 +50,7 @@ The framework (isolated host process, worker threads, telemetry sampler, profile
 
 - **Test profiles by device type:** Laptop, Desktop, All-in-one, Mac and Tablet profiles, auto-selected from chassis type. Each test is required or optional per profile; "Finish" can be blocked until required tests are done.
 - **Cosmetic grading:** a configurable A/B/C/D checklist (lid, palm rest, screen, bezel) stored as structured data.
-- **Sanitization record:** fields for wipe method (NIST 800-88 Clear/Purge), tool, verification result and operator, for a certificate of sanitization. Qudit records these; it doesn't perform wipes, at least initially.
+- **Sanitization record:** fields for wipe method (NIST 800-88 Clear/Purge), tool, verification result and operator, for a certificate of sanitization. Benchwise records these; it doesn't perform wipes, at least initially.
 - **Label printing:** print an asset label with QR code to a thermal label printer at save time.
 - **Tools page, done properly:** a configurable list of links and commands in Settings (internal portals, vendor warranty lookup by serial, BIOS update pages).
 - **Barcode-first entry:** the asset tag field already accepts a scanner with Enter. Add an optional second scan to verify the serial sticker matches the firmware serial.
@@ -61,13 +61,49 @@ The framework (isolated host process, worker threads, telemetry sampler, profile
 2. **Server:** a small service that validates `qudit.audit` records by schema version and stores them in a database. It serves a dashboard: search by asset tag or serial, fail rates by model, technician throughput, and units awaiting retest.
 3. **Station config from the server:** profiles, asset tag format and enabled tests are pulled centrally, so every bench runs the same procedure.
 
+Phase 4 is the groundwork for the Benchwise Hub (3.0) below: the outbox and the versioned `qudit.audit` records are what the Hub ingests.
+
 ## Phase 5: Distribution and quality
 
 - **Code signing:** Windows (avoids SmartScreen warnings) and macOS notarization (needed for camera/mic permission prompts on distributed builds).
-- **Linux live USB:** a minimal Debian/Ubuntu live image that autostarts the Qudit AppImage as root. This covers machines with no OS or a wiped drive, which are common in ITAD, and gives full DMI/SMART access.
+- **Linux live USB:** a minimal Debian/Ubuntu live image that autostarts the Benchwise AppImage as root. This covers machines with no OS or a wiped drive, which are common in ITAD, and gives full DMI/SMART access.
 - **Hardware fixtures:** add `--dump-raw` to save unprocessed `systeminformation` output from real machines into `test/fixtures/`. Every odd machine you meet becomes a regression test for `normalize.js`.
 - **Linting/types:** ESLint plus `tsc --checkJs` with JSDoc types on the main process.
 - **Updates:** optional `electron-updater`, off by default for offline benches.
+
+## 3.0 and later: Benchwise Hub (site server)
+
+A self-hosted server for a site, quick to deploy, that every bench and Benchwise USB stick connects to. The goals are one source of truth for every unit tested, no stale copies of the app on the floor, and proof that every unit went through the full procedure.
+
+**Deployment: up in minutes on hardware you already have**
+- Ships as a single Docker image *and* as a bootable installer (USB/ISO) that turns a spare desktop, mini PC or VM into a dedicated Hub appliance. No database or web server to configure by hand.
+- First-run setup in the browser: site name, admin account, storage location. Sensible defaults for everything else.
+- Runs fully on the local network with no internet dependency. Backups go to a second disk, a NAS or an off-site target.
+- Benches find it automatically on the LAN (mDNS/zero-config), with a manual address as a fallback.
+
+**Connection and enrollment**
+- Stations and USB sticks are enrolled with a short pairing code shown on the Hub. Each gets its own revocable key.
+- All traffic is encrypted (TLS with a Hub-generated certificate that stations pin at enrollment).
+- Live station view: which benches are online, what version they run, who is logged in, what unit is on the bench.
+
+**Central records: every test recorded**
+- Every audit (JSON + PDF) syncs to the Hub through the station outbox. Benches keep working offline and catch up when reconnected.
+- Records are append-only and hash-chained, so edits and deletions are visible. Re-tests are linked to the original audit, not overwritten.
+- Completeness checks: units seen but never fully tested, incomplete audits, failed units awaiting retest, and gaps against an imported intake list or lot manifest.
+- Search and dashboard: asset tag, serial, lot, model, technician, fail rates, throughput. CSV/JSON export, and an API for an ERP or inventory system.
+- Optional SMB/network-share view of reports for teams and tools that expect a plain folder.
+
+**Log and diagnostics sync**
+- Station app logs, crash reports and raw hardware dumps (`--dump-raw`) upload to the Hub. Problems on one bench can be diagnosed from the office, and odd machines become regression fixtures.
+
+**Fleet updates for benches and USB sticks**
+- The Hub hosts approved Benchwise releases. Stations update from it, never straight from the internet, so a site can pin, stage or roll back a version.
+- Plugging a Benchwise USB stick (portable app or live-USB image) into any enrolled station or the Hub checks it and brings it up to the approved version: app, test profiles and settings. The stick's version is recorded in every audit it produces.
+- Pushes test profiles, asset tag rules and enabled tests to every bench, so the whole site runs the same procedure.
+
+**Later**
+- Multi-site: several Hubs reporting to one organization view.
+- Roles and permissions (technician, lead, auditor, admin), and audit-ready exports for certifications (e.g. R2/e-Stewards evidence).
 
 ---
 

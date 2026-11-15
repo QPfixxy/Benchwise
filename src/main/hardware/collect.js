@@ -146,7 +146,7 @@ async function collectHardware() {
 
   const isLinuxNonRoot = process.platform === 'linux' && typeof process.getuid === 'function' && process.getuid() !== 0;
   if (isLinuxNonRoot && (!system.serial || memory.slots.length === 0)) {
-    warnings.push('Some firmware details (serials, memory modules) need administrator access on Linux. Restart Qudit and choose "Continue as administrator" (or run it with sudo).');
+    warnings.push('Some firmware details (serials, memory modules) need administrator access on Linux. Restart Benchwise and choose "Continue as administrator" (or run it with sudo).');
   }
   if (disks.some((d) => d.smartStatus === 'Unknown')) {
     warnings.push('SMART status unavailable for one or more drives (install smartmontools for drive health).');

@@ -33,7 +33,7 @@ jobs:
       - name: UI check (renders every page, saves a report, fails on console errors)
         shell: bash
         env:
-          QUDIT_DATA_DIR: ci-out/ui/data
+          BENCHWISE_DATA_DIR: ci-out/ui/data
         run: |
           mkdir -p ci-out/ui
           cmd="node scripts/electron.js --ui-check=ci-out/ui"
@@ -42,5 +42,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qudit-${{ matrix.os }}
+          name: benchwise-${{ matrix.os }}
           path: ci-out/

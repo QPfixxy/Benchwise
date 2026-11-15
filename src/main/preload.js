@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
-contextBridge.exposeInMainWorld('qudit', {
+contextBridge.exposeInMainWorld('benchwise', {
   appInfo: call('app:info'),
   collectHardware: call('hardware:collect'),
   stress: {

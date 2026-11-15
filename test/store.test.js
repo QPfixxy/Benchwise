@@ -14,11 +14,11 @@ const settings = {
   stationName: 'Bench 1',
   enabledTests: { camera: true, keyboard: true, touchscreen: false },
 };
-const app = { name: 'Qudit', version: 'test', platform: 'test' };
+const app = { name: 'Benchwise', version: 'test', platform: 'test' };
 const hardware = { system: { serial: 'SER123', manufacturer: 'Acme', model: '<b>X1</b>' }, storage: [], warnings: [] };
 
 function tmpStore() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qudit-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'benchwise-test-'));
   return { dir, store: new ReportStore(() => dir, async () => Buffer.from('%PDF-fake')) };
 }
 

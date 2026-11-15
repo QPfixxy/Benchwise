@@ -1,6 +1,8 @@
-# Qudit
+# Benchwise
 
-Qudit is an open-source, lightweight **ITAD (IT asset disposition) audit tool** for refurb and resale teams. It reads the hardware of the machine it runs on and walks a tester through a repeatable set of functional checks. Each audit is saved as a **PDF** for people and a **JSON record** for systems.
+Benchwise is an open-source, lightweight **ITAD (IT asset disposition) audit tool** for refurb and resale teams. It reads the hardware of the machine it runs on and walks a tester through a repeatable set of functional checks. Each audit is saved as a **PDF** for people and a **JSON record** for systems.
+
+> **Formerly Qudit.** The project was renamed to Benchwise in 2.1. Existing settings, saved reports and prepared USB test drives carry over automatically, and the JSON schema name (`qudit.audit`) is unchanged so existing records stay valid.
 
 It runs as a single desktop app on **Windows, macOS and Linux**. It needs no server, no browser and no internet connection, and it can run straight off a USB stick.
 
@@ -17,7 +19,7 @@ It runs as a single desktop app on **Windows, macOS and Linux**. It needs no ser
 
 **Functional tests (operator-guided, each recorded as Pass / Fail / N/A with notes)**
 
-Tests only run when they apply to the unit. A desktop with no camera, or a laptop without a touch digitizer, gets that test auto-recorded as N/A with the reason (the operator can still choose "Run anyway"). Hardware a unit *should* have but that isn't detected (e.g. a laptop camera) is never skipped; it's flagged so a dead module gets failed rather than hidden. Phones (Continuity Camera), headsets, docks and virtual devices are labelled and never treated as part of the unit. If a laptop's lid is closed, Qudit says so.
+Tests only run when they apply to the unit. A desktop with no camera, or a laptop without a touch digitizer, gets that test auto-recorded as N/A with the reason (the operator can still choose "Run anyway"). Hardware a unit *should* have but that isn't detected (e.g. a laptop camera) is never skipped; it's flagged so a dead module gets failed rather than hidden. Phones (Continuity Camera), headsets, docks and virtual devices are labelled and never treated as part of the unit. If a laptop's lid is closed, Benchwise says so.
 
 | Test | How it works |
 |---|---|
@@ -27,7 +29,7 @@ Tests only run when they apply to the unit. A desktop with no camera, or a lapto
 | Camera | Live preview, camera picker, reports actual resolution and frame rate |
 | Microphone | 5-second raw recording (no OS noise suppression), level meter, automatic silence detection, playback |
 | Speakers | Separate left/right channel tones, frequency sweep, music sample, output device picker |
-| USB Ports | Plug a **Qudit test drive** (any flash drive, prepared once in-app; nothing erased) into each port. Per port: physical location, negotiated link speed, uncached read and write speed, and a SHA-256 integrity check of a reference file. Then the drive is auto-ejected. Auto-passes when every expected port is verified; any data corruption fails it |
+| USB Ports | Plug a **Benchwise test drive** (any flash drive, prepared once in-app; nothing erased) into each port. Per port: physical location, negotiated link speed, uncached read and write speed, and a SHA-256 integrity check of a reference file. Then the drive is auto-ejected. Auto-passes when every expected port is verified; any data corruption fails it |
 | CPU Stress | Every core runs integer, floating-point, cache and SHA-256 kernels with known answers; **one wrong answer fails the unit**. Throughput is tracked in 5 s windows to detect thermal throttling; temperature and clock are sampled where the OS exposes them. Profiles: 2 / 10 / 30 min |
 | Memory Test | Fills 50–80% of free RAM with 7 patterns (stuck bits, coupling, walking ones, address lines, random), writes every chunk before verifying so data round-trips through DRAM; any mismatch fails with the offset and flipped bits |
 
@@ -48,9 +50,9 @@ Download the build for the platform from the GitHub **Releases** page:
 
 | Platform | File | Notes |
 |---|---|---|
-| Windows 10/11 | `Qudit-<version>-windows-portable.exe` | Runs from a USB stick, no install. `…-windows-setup.exe` installs it instead |
-| macOS (Apple Silicon / Intel) | `Qudit-<version>-mac-arm64.dmg` / `…-mac-x64.dmg` | Signed and notarized when the signing secrets are set up (below); otherwise right-click the app → **Open** the first time |
-| Linux (x64) | `Qudit-<version>-linux-x86_64.AppImage` | `chmod +x` it, then run. Also the basis for a live-USB image |
+| Windows 10/11 | `Benchwise-<version>-windows-portable.exe` | Runs from a USB stick, no install. `…-windows-setup.exe` installs it instead |
+| macOS (Apple Silicon / Intel) | `Benchwise-<version>-mac-arm64.dmg` / `…-mac-x64.dmg` | Signed and notarized when the signing secrets are set up (below); otherwise right-click the app → **Open** the first time |
+| Linux (x64) | `Benchwise-<version>-linux-x86_64.AppImage` | `chmod +x` it, then run. Also the basis for a live-USB image |
 
 **Administrator access.** Firmware serials, memory-module details and drive health need admin rights on Windows and Linux:
 - **Windows:** the app asks for administrator (UAC) every time it starts. Because Windows hides *mapped* drive letters from administrator apps, set a network reports folder as `\\server\share\…`, not `Z:\…`.
@@ -59,7 +61,7 @@ Download the build for the platform from the GitHub **Releases** page:
 
 The sidebar shows **✓ Administrator** or **⚠ Limited mode**, so a tester can tell at a glance.
 
-**Portable / USB-stick mode:** create a folder named `qudit-data` next to the executable (the Windows portable build does this automatically). Settings and reports are then kept in that folder instead of the machine's user profile. This lets you carry one stick between machines without leaving files behind. You can also set `QUDIT_DATA_DIR` to any path.
+**Portable / USB-stick mode:** create a folder named `benchwise-data` next to the executable (the Windows portable build does this automatically). Settings and reports are then kept in that folder instead of the machine's user profile. This lets you carry one stick between machines without leaving files behind. You can also set `BENCHWISE_DATA_DIR` to any path.
 
 ### Making a release
 
@@ -92,10 +94,10 @@ Local Mac builds without the certificate: `npm run dist:mac:unsigned`.
 
 ## Settings
 
-Found on the Settings page and stored in `qudit-settings.json` in the data folder.
+Found on the Settings page and stored in `benchwise-settings.json` in the data folder.
 
 - **Station name / default technician:** printed on every report.
-- **Asset tag label and format:** name your internal ID (e.g. "Regency Serial") and optionally enforce a format with a regular expression. For example, `\d{7}-\d{7}` was the original Qudit format. Tags are always restricted to filename-safe characters.
+- **Asset tag label and format:** name your internal ID (e.g. "Regency Serial") and optionally enforce a format with a regular expression. For example, `\d{7}-\d{7}` was the original Qudit 1.x format. Tags are always restricted to filename-safe characters.
 - **Reports folder:** can point at a network share so every bench saves to one place.
 - **Enabled tests:** turn off tests that never apply at a station.
 
@@ -120,7 +122,7 @@ CI runs all three on Windows, macOS and Linux and uploads the generated PDFs and
 src/
   main/                 Electron main process (Node)
     main.js             window, app:// protocol, IPC, permissions, smoke/UI checks
-    preload.js          the only bridge to the UI (window.qudit API)
+    preload.js          the only bridge to the UI (window.benchwise API)
     settings.js         settings + data-folder resolution (portable mode)
     hardware/
       collect.js        runs all probes in parallel, OS fallbacks (no shell)
