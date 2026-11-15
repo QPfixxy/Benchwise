@@ -28,14 +28,21 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
   app.commandLine.appendSwitch('no-sandbox');
 }
 
-// The packaged Windows app runs elevated (requireAdministrator manifest).
-// There Chromium can fail to launch the *GPU process* sandbox
-// ("GPU process launch failed: error_code=18" -> "GPU process isn't usable.
-// Goodbye.") and the app exits. Disable just that sandbox; renderer pages stay
-// sandboxed, and an elevated process gains little from it anyway.
+// The packaged Windows app always runs elevated (requireAdministrator
+// manifest). In that state Chromium failed to launch its sandboxed child
+// processes on Windows: first the GPU process ("GPU process launch failed:
+// error_code=18"), then renderers (every page load -> ERR_FAILED). So the
+// Chromium sandbox is turned off there. Trade-off: the sandbox is a second line
+// of defence against hostile web content; Qudit only loads its own bundled
+// pages, and context isolation + the narrow preload API still apply.
 if (process.platform === 'win32' && app.isPackaged) {
-  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('no-sandbox');
 }
+
+// If a GPU/renderer/utility process dies, say which and why (instead of a
+// bare ERR_FAILED from whatever page it was serving).
+app.on('child-process-gone', (_e, d) => console.error(`[qudit] child process gone: ${d.type} reason=${d.reason} exitCode=${d.exitCode}`));
+app.on('render-process-gone', (_e, _wc, d) => console.error(`[qudit] renderer gone: reason=${d.reason} exitCode=${d.exitCode}`));
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
