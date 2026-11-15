@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # GitHub's Linux runners can't use Chromium's SUID sandbox.
+      ELECTRON_DISABLE_SANDBOX: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Smoke test (real hardware scan + PDF)
+        shell: bash
+        run: |
+          mkdir -p ci-out/smoke
+          cmd="node scripts/electron.js --smoke-test=ci-out/smoke"
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a $cmd; else $cmd; fi
+
+      - name: UI check (renders every page, saves a report, fails on console errors)
+        shell: bash
+        env:
+          QUDIT_DATA_DIR: ci-out/ui/data
+        run: |
+          mkdir -p ci-out/ui
+          cmd="node scripts/electron.js --ui-check=ci-out/ui"
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a $cmd; else $cmd; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qudit-${{ matrix.os }}
+          path: ci-out/

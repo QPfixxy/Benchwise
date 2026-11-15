@@ -1,0 +1,42 @@
+{
+  "int": [
+    "eeaad50b",
+    "f8d92613",
+    "85efe18d",
+    "544ca687",
+    "7a4d28d3",
+    "4bd63cfa",
+    "dced60f8",
+    "694e119"
+  ],
+  "fp": [
+    "c08e51ecb8662b39",
+    "c06dbb317bda68a9",
+    "40780d8f26966005",
+    "409682bbb32a3861",
+    "40962dab99eda29a",
+    "c05d29519ede6cf9",
+    "c052c7ab875089a2",
+    "40932bad2f2b5451"
+  ],
+  "mem": [
+    "e78095d6",
+    "5067d084",
+    "80122612",
+    "6a3599be",
+    "87f36290",
+    "4feb3aa",
+    "d109d51b",
+    "e2e11e65"
+  ],
+  "hash": [
+    "35e8d4cbaee35eb60f4cd2086528e424f2a2920862c385421fe36f4f15b7de60",
+    "7143b971ee5150226072469649db834b250a7de1479873aaafa679ac1daf610a",
+    "e789f236353d06f37370d59e9e7ab7cd8ae34da6fb0cbcb0d719cca5217289fe",
+    "7ba6b9dfd52ef991cbf095d7173a6c866c5cbde1aa6222fbd032fb20174d841f",
+    "def522133aea14fe067e1e6a58aba3102baac67c381ac1a4af4b8ee63d020136",
+    "3b60acec78c8f2bd9a909f5f4c45c8208fb76a204446caf732f2698e2e4fd2b2",
+    "cf66ae6778f1822f8c208a169d413a5870a5c7465e9247f8bba585513ad033b5",
+    "0fbacc430fb3c557af931363e0927450a796a3d59f656ddb967620d5abea5d2c"
+  ]
+}

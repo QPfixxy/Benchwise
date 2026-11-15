@@ -1,19 +1,77 @@
 {
+  "name": "qudit",
+  "productName": "Qudit",
+  "version": "2.0.0",
+  "description": "Lightweight ITAD hardware information and test tool for auditors and testers.",
+  "main": "src/main/main.js",
+  "license": "GPL-3.0-only",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node scripts/electron.js",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "node scripts/electron.js --smoke-test",
+    "check:ui": "node scripts/electron.js --ui-check=out/ui-check",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
   "dependencies": {
-    "cpu": "^1.0.1",
-    "express": "^4.19.2",
-    "fs": "^0.0.1-security",
-    "multer": "^1.4.5-lts.1",
-    "open": "^10.1.0",
-    "os": "^0.1.2",
-    "path": "^0.12.7",
-    "qrcode": "^1.5.3",
-    "socket.io": "^4.7.5",
-    "systeminformation": "^5.22.7",
-    "usb": "^2.12.1",
-    "util": "^0.12.5"
+    "qrcode": "^1.5.4",
+    "systeminformation": "^5.33.23"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "io.github.qudit",
+    "productName": "Qudit",
+    "files": [
+      "src/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "Qudit-${version}-portable.exe"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Qudit uses the camera to run the webcam test.",
+        "NSMicrophoneUsageDescription": "Qudit uses the microphone to run the microphone test."
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "asarUnpack": [
+      "src/main/stress/**"
+    ]
   }
 }

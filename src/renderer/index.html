@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Qudit</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="assets/qudit.png" alt="">
+      <span>Qudit</span>
+    </div>
+    <nav id="nav" aria-label="Main"></nav>
+    <div class="sidebar-foot" id="sidebarFoot"></div>
+  </aside>
+  <main>
+    <header class="session-bar" id="sessionBar"></header>
+    <section id="view" class="view"></section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
