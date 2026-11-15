@@ -27,6 +27,15 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
   app.commandLine.appendSwitch('no-sandbox');
 }
 
+// The packaged Windows app runs elevated (requireAdministrator manifest).
+// There Chromium can fail to launch the *GPU process* sandbox
+// ("GPU process launch failed: error_code=18" -> "GPU process isn't usable.
+// Goodbye.") and the app exits. Disable just that sandbox; renderer pages stay
+// sandboxed, and an elevated process gains little from it anyway.
+if (process.platform === 'win32' && app.isPackaged) {
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+}
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
