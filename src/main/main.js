@@ -308,12 +308,22 @@ async function runUiCheck() {
 
   await new Promise((r) => mainWindow.webContents.once('did-finish-load', r));
   for (let i = 0; i < 60 && !(await js(`!!document.querySelector('.cards')`)); i++) await wait(500);
+  await wait(500); // let a hidden window repaint before capture (Windows serves stale frames otherwise)
   await shot('1-overview');
   await js(`document.getElementById('assetTagInput').value='TEST-001'; document.getElementById('assetTagInput').dispatchEvent(new Event('input'))`);
   for (const [label, name] of [['Keyboard', '2-keyboard'], ['Display', '3-display'], ['Touchscreen', '3b-touch'], ['USB Ports', '4-ports'], ['Finish', '5-finish']]) {
     await click(label);
     await wait(name === '4-ports' ? 3000 : 600);
     await shot(name);
+    if (name === '2-keyboard') {
+      // Widest layout: the full board must fit without horizontal scrolling.
+      await js(`(() => { const s = document.querySelector('.keyboard').closest('.test-body').querySelector('select'); s.value = 'full'; s.dispatchEvent(new Event('change')); })()`);
+      await wait(400);
+      await shot('2b-keyboard-full');
+      if (await js(`(() => { const k = document.querySelector('.keyboard'); return k.scrollWidth > k.clientWidth + 1; })()`)) {
+        errors.push('keyboard: full-size layout overflows horizontally');
+      }
+    }
   }
   // Stress tests: real runs in the utility process (shortened in UI-check mode).
   for (const [label, kind, name] of [['CPU Stress', 'cpu', '8-cpu'], ['Memory Test', 'memory', '9-memory']]) {

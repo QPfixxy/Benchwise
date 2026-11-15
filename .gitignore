@@ -11,3 +11,6 @@ coverage/
 .DS_Store
 Thumbs.db
 .env
+
+# CI artifacts dropped in for review
+/ingest/
