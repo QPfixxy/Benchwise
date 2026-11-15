@@ -124,7 +124,7 @@ test('macOS hardware ports: real MACs kept, bridge/Thunderbolt/virtual dropped',
   const text = [
     'Hardware Port: Ethernet Adapter (en4)\nDevice: en4\nEthernet Address: 56:da:45:ce:e5:46',
     'Hardware Port: Thunderbolt Bridge\nDevice: bridge0\nEthernet Address: 36:f6:a9:a8:c7:40',
-    'Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: bc:d0:74:0e:fe:96',
+    'Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a4:5e:60:00:00:01',
     'Hardware Port: Thunderbolt 1\nDevice: en1\nEthernet Address: 36:f6:a9:a8:c7:40',
     'Hardware Port: USB 10/100/1000 LAN\nDevice: en7\nEthernet Address: 00:e0:4c:68:01:02',
     'VLAN Configurations\n===================',
@@ -133,7 +133,7 @@ test('macOS hardware ports: real MACs kept, bridge/Thunderbolt/virtual dropped',
   assert.deepEqual(
     nets.map((x) => [x.type, x.name, x.mac]),
     [
-      ['Wi-Fi', 'Wi-Fi', 'BC:D0:74:0E:FE:96'],
+      ['Wi-Fi', 'Wi-Fi', 'A4:5E:60:00:00:01'],
       ['Ethernet', 'USB 10/100/1000 LAN', '00:E0:4C:68:01:02'],
     ],
   );
