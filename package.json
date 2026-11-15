@@ -68,7 +68,7 @@
         "NSCameraUsageDescription": "Benchwise uses the camera to run the webcam test.",
         "NSMicrophoneUsageDescription": "Benchwise uses the microphone to run the microphone test."
       },
-      "icon": "build/icon.png",
+      "icon": "build/icon-mac.png",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",

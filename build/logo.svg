@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Benchwise "W-check": the W of "wise" whose second half is a check mark. -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#13233a"/>
+  <polyline points="106,170 176,350 256,226 336,350" fill="none" stroke="#ffffff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="256,226 336,350 414,134" fill="none" stroke="#3cc8a8" stroke-width="44" stroke-linecap="butt" stroke-linejoin="round"/>
+    <circle cx="414" cy="134" r="22" fill="#3cc8a8"/>
+</svg>
