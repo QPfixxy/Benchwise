@@ -7,7 +7,10 @@
 const path = require('node:path');
 const { PROFILES, evaluateCpu, evaluateMemory } = require('./verdict');
 
-const HOST = path.join(__dirname, 'host.js');
+// In a packaged app this folder is unpacked from app.asar (package.json
+// "asarUnpack"): separate processes/threads must load real files from disk.
+const unpacked = (p) => p.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
+const HOST = unpacked(path.join(__dirname, 'host.js'));
 const TELEMETRY_MS = 2000;
 const MIN_MEMORY_BYTES = 64 * 1024 * 1024;
 

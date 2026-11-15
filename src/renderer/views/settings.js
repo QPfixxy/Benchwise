@@ -80,7 +80,9 @@ export default {
                 'Choose…',
               ),
             ),
-            'Can be a network share so every bench saves to one place.',
+            (ctx.state.info?.platform || '').startsWith('win32')
+              ? 'Can be a network share so every bench saves to one place. Use the full \\\\server\\share path, not a mapped drive letter: Qudit runs as administrator, and Windows hides mapped drives from administrator apps.'
+              : 'Can be a network share so every bench saves to one place.',
           ),
         ),
         el(

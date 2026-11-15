@@ -33,7 +33,7 @@ onMessage((msg) => {
 
 function spawn(file, workerData, onMsg) {
   return new Promise((resolve) => {
-    const w = new Worker(path.join(__dirname, file), { workerData });
+    const w = new Worker(path.join(__dirname, file).replace(/app\.asar([\\/])/, 'app.asar.unpacked$1'), { workerData });
     let crash = null;
     w.on('message', onMsg);
     w.on('error', (err) => (crash = `worker ${workerData.id}: ${err.message}`));

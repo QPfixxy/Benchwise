@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { overallStatus, validateAssetTag, TEST_STATUSES } = require('../hardware/normalize');
+const { giveToOwner } = require('../elevation');
 
 const SCHEMA = 'qudit.audit';
 const SCHEMA_VERSION = 1;
@@ -108,6 +109,7 @@ class ReportStore {
     } catch (err) {
       pdfError = err.message; // the JSON is the record of truth; keep it even if PDF fails
     }
+    giveToOwner(this.dir, jsonPath, pdfError ? null : pdfPath); // elevated on Linux: keep files the operator's
     return { file: base, jsonPath, pdfPath: pdfError ? null : pdfPath, pdfError };
   }
 

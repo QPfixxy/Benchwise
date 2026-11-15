@@ -275,7 +275,14 @@ function renderNav() {
     link('settings', 'Settings'),
   ]);
   const foot = clear(document.getElementById('sidebarFoot'));
-  if (state.info) foot.append(`v${state.info.version}${state.settings?.stationName ? ` · ${state.settings.stationName}` : ''}`);
+  if (state.info) {
+    foot.append(`v${state.info.version}${state.settings?.stationName ? ` · ${state.settings.stationName}` : ''}`);
+    // null = not applicable (macOS); false = should have admin but doesn't.
+    if (state.info.elevated === true) foot.append(el('div', { class: 'pass-text' }, '✓ Administrator'));
+    if (state.info.elevated === false) {
+      foot.append(el('div', { class: 'warn-text', title: 'Serials, memory module details and drive health may be missing. Restart Qudit as administrator.' }, '⚠ Limited mode (not administrator)'));
+    }
+  }
 }
 
 function renderSessionBar() {

@@ -17,7 +17,9 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "dist:dir": "electron-builder --dir",
+    "dist:mac:unsigned": "electron-builder --mac -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
@@ -43,10 +45,13 @@
       "target": [
         "portable",
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.png",
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "portable": {
-      "artifactName": "Qudit-${version}-portable.exe"
+      "artifactName": "Qudit-${version}-windows-portable.exe",
+      "requestExecutionLevel": "admin"
     },
     "mac": {
       "target": [
@@ -62,16 +67,47 @@
       "extendInfo": {
         "NSCameraUsageDescription": "Qudit uses the camera to run the webcam test.",
         "NSMicrophoneUsageDescription": "Qudit uses the microphone to run the microphone test."
-      }
+      },
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "executableName": "qudit",
+      "artifactName": "Qudit-${version}-linux-${arch}.${ext}"
     },
     "asarUnpack": [
       "src/main/stress/**"
-    ]
-  }
+    ],
+    "artifactName": "Qudit-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "draft"
+      }
+    ],
+    "nsis": {
+      "artifactName": "Qudit-${version}-windows-setup.exe",
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
+    },
+    "dmg": {
+      "artifactName": "Qudit-${version}-mac-${arch}.${ext}"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qpfixxy/Qudit.git"
+  },
+  "author": "Qudit contributors",
+  "homepage": "https://github.com/qpfixxy/Qudit"
 }

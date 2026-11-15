@@ -8,6 +8,7 @@ const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, protocol, net, session, shell, dialog, systemPreferences, screen, utilityProcess } = require('electron');
 const si = require('systeminformation');
 const { StressManager } = require('./stress/manager');
+const { isElevated, ensureLinuxElevation } = require('./elevation');
 
 const { collectHardware } = require('./hardware/collect');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
@@ -123,7 +124,7 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
-  handle('app:info', () => appInfo());
+  handle('app:info', async () => ({ ...appInfo(), elevated: await isElevated() }));
   handle('hardware:collect', (force) => getHardware(Boolean(force)));
   // USB port test (test drive)
   const ports = new PortWatcher();
@@ -242,7 +243,10 @@ function createWindow() {
     paintWhenInitiallyHidden: true,
   });
   mainWindow.once('ready-to-show', () => {
+    // UI check stays hidden locally, but on CI (a virtual display nobody sees)
+    // it's shown so frames always repaint and screenshots are reliable.
     if (!uiCheckArg) mainWindow.show();
+    else if (process.env.CI) mainWindow.showInactive();
   });
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (!keyboardCapture) return;
@@ -302,7 +306,20 @@ async function runUiCheck() {
   mainWindow.webContents.on('preload-error', (_e, p, err) => errors.push(`preload: ${err.message}`));
   const js = (code) => mainWindow.webContents.executeJavaScript(code);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const shot = async (name) => fs.writeFileSync(path.join(outDir, `${name}.png`), (await mainWindow.webContents.capturePage()).toPNG());
+  // Screenshots are evidence, not the check itself: retry flaky captures
+  // (Chromium's "UnknownVizError" under xvfb) and never fail the run on them.
+  const shotFailures = [];
+  const shot = async (name) => {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        const img = await mainWindow.webContents.capturePage();
+        if (!img.isEmpty()) return fs.writeFileSync(path.join(outDir, `${name}.png`), img.toPNG());
+      } catch (err) {
+        if (attempt === 4) shotFailures.push(`${name}: ${err.message}`);
+      }
+      await wait(400);
+    }
+  };
   const click = (label) =>
     js(`(() => { const b = [...document.querySelectorAll('.nav-item')].find(b => b.textContent.startsWith(${JSON.stringify(label)})); if (!b) throw new Error('nav not found: ${label}'); b.click(); })()`);
 
@@ -354,7 +371,7 @@ async function runUiCheck() {
   await wait(400);
   await shot('7-settings');
   await click('System Overview');
-  const summary = { ok: errors.length === 0, errors };
+  const summary = { ok: errors.length === 0, errors, screenshotFailures: shotFailures };
   fs.writeFileSync(path.join(outDir, 'ui-check.json'), JSON.stringify(summary, null, 2));
   await new Promise((r) => process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`, r));
   return summary.ok;
@@ -375,6 +392,14 @@ if (!smokeArg && !app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     settings = new Settings(resolveDataDir(app));
     store = new ReportStore(() => settings.reportsDir(), renderPdf);
+
+    // Linux: offer to relaunch as root (Windows elevates via the exe manifest).
+    if (!smokeArg && !uiCheckArg) {
+      if ((await ensureLinuxElevation({ app, dialog, dataDir: settings.dataDir })) === 'exit') {
+        app.exit(0);
+        return;
+      }
+    }
 
     if (smokeArg) {
       try {

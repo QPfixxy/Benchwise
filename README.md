@@ -44,20 +44,51 @@ npm start
 
 ## Running on test machines
 
-Build a distributable for the platform you need:
+Download the build for the platform from the GitHub **Releases** page:
 
-```bash
-npm run dist:win     # Qudit-<version>-portable.exe + installer
-npm run dist:mac     # .dmg (Apple Silicon + Intel)
-npm run dist:linux   # .AppImage
-```
+| Platform | File | Notes |
+|---|---|---|
+| Windows 10/11 | `Qudit-<version>-windows-portable.exe` | Runs from a USB stick, no install. `…-windows-setup.exe` installs it instead |
+| macOS (Apple Silicon / Intel) | `Qudit-<version>-mac-arm64.dmg` / `…-mac-x64.dmg` | Signed and notarized when the signing secrets are set up (below); otherwise right-click the app → **Open** the first time |
+| Linux (x64) | `Qudit-<version>-linux-x86_64.AppImage` | `chmod +x` it, then run. Also the basis for a live-USB image |
+
+**Administrator access.** Firmware serials, memory-module details and drive health need admin rights on Windows and Linux:
+- **Windows:** the app asks for administrator (UAC) every time it starts. Because Windows hides *mapped* drive letters from administrator apps, set a network reports folder as `\\server\share\…`, not `Z:\…`.
+- **Linux:** the app offers to restart as administrator (system password prompt). Choosing "limited mode" still works, with those fields missing. Started as root (e.g. from a live USB), it doesn't ask. Reports stay in your normal user folder and owned by you.
+- **macOS:** no administrator access needed.
+
+The sidebar shows **✓ Administrator** or **⚠ Limited mode**, so a tester can tell at a glance.
 
 **Portable / USB-stick mode:** create a folder named `qudit-data` next to the executable (the Windows portable build does this automatically). Settings and reports are then kept in that folder instead of the machine's user profile. This lets you carry one stick between machines without leaving files behind. You can also set `QUDIT_DATA_DIR` to any path.
 
-**Platform notes**
-- **Linux:** firmware serials and memory-module details require root. Run with `sudo` for a complete report (Qudit disables Chromium's sandbox automatically when running as root). Installing `smartmontools` enables SMART status.
-- **macOS:** the first camera or microphone test triggers the system permission prompt.
-- **Windows:** no admin rights are needed for the inventory. The first scan can take 10–20 seconds while WMI warms up.
+### Making a release
+
+1. Bump `version` in `package.json` and commit.
+2. Tag and push: `git tag v2.0.0 && git push origin v2.0.0`
+3. The **Release** workflow builds all three platforms, smoke-tests each packaged app on its own OS, and attaches the files to a **draft** release on GitHub. Review it, then click **Publish**.
+
+To build locally instead: `npm run dist:win`, `npm run dist:mac` or `npm run dist:linux` (output in `dist/`). Each platform is best built on its own OS.
+
+### Mac signing and notarization (one-time setup)
+
+Without this, the Mac build is self-signed and testers must right-click → Open the first time. With it, the app opens normally on any Mac. You need a paid Apple Developer account with the **Account Holder** or **Admin** role.
+
+1. **Create a Developer ID certificate.** In Xcode → Settings → Accounts → select your team → **Manage Certificates** → **+** → **Developer ID Application**. (An "Apple Development" certificate won't work: it's only trusted for apps you run yourself.)
+2. **Export it.** In Keychain Access → *My Certificates*, right-click **Developer ID Application: …** → Export → save as `.p12` with a password. Then copy it as base64: `base64 -i DeveloperID.p12 | pbcopy`
+3. **Create a notarization API key.** In [App Store Connect](https://appstoreconnect.apple.com) → Users and Access → Integrations → App Store Connect API → Team Keys → **+**, with *Developer* access. Download the `AuthKey_XXXXXX.p8` file (it can only be downloaded once) and note the **Key ID** and **Issuer ID**.
+4. **Add five repository secrets** in GitHub → repo Settings → Secrets and variables → Actions:
+
+   | Secret | Value |
+   |---|---|
+   | `MAC_CERT_P12_BASE64` | the base64 text from step 2 |
+   | `MAC_CERT_PASSWORD` | the `.p12` password |
+   | `APPLE_API_KEY_P8` | the full contents of the `.p8` file |
+   | `APPLE_API_KEY_ID` | the Key ID |
+   | `APPLE_API_ISSUER` | the Issuer ID |
+
+5. Run **Actions → Release → Run workflow**. The *Verify Mac signature* step should show your Developer ID and `source=Notarized Developer ID`. Notarization adds a few minutes per Mac build.
+
+Local Mac builds without the certificate: `npm run dist:mac:unsigned`.
 
 ## Settings
 

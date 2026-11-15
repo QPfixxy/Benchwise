@@ -1,0 +1,112 @@
+name: Release
+
+# Push a tag like v2.0.0 to build Windows, macOS and Linux and attach them to
+# a DRAFT GitHub release (review it, then click Publish). Run manually from the
+# Actions tab to get test builds as artifacts without publishing anything.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+            exe: dist/win-unpacked/Qudit.exe
+          - os: macos-latest
+            target: --mac
+            exe: dist/mac-arm64/Qudit.app/Contents/MacOS/Qudit
+          - os: ubuntu-latest
+            target: --linux
+            exe: dist/linux-unpacked/qudit
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_DISABLE_SANDBOX: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version ($want). Bump the version first."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing + notarization (optional; see README "Mac signing").
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then publish=always; else publish=never; fi
+          extra=()
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ -n "$MAC_CERT_P12_BASE64" ]; then
+              export CSC_LINK="$MAC_CERT_P12_BASE64" CSC_KEY_PASSWORD="$MAC_CERT_PASSWORD"
+              if [ -n "$APPLE_API_KEY_P8" ]; then
+                printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+                export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
+                echo "Signing with Developer ID and notarizing."
+              else
+                echo "::warning::Signing with Developer ID but NOT notarizing (APPLE_API_KEY_P8 secret missing)."
+                extra+=(-c.mac.notarize=false)
+              fi
+            else
+              echo "::warning::No MAC_CERT_P12_BASE64 secret: building an ad-hoc signed Mac app (testers must right-click > Open)."
+              extra+=(-c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false)
+            fi
+          fi
+          npx electron-builder ${{ matrix.target }} --publish "$publish" "${extra[@]}"
+
+      - name: Verify Mac signature
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          NOTARIZED: ${{ secrets.APPLE_API_KEY_P8 != '' && secrets.MAC_CERT_P12_BASE64 != '' }}
+        run: |
+          codesign -dv --verbose=2 dist/mac-arm64/Qudit.app 2>&1 | grep -E "Authority|TeamIdentifier|Signature|flags" || true
+          if [ "$NOTARIZED" = "true" ]; then
+            xcrun stapler validate dist/mac-arm64/Qudit.app
+            spctl --assess --type execute --verbose dist/mac-arm64/Qudit.app
+          fi
+
+      - name: Smoke test the packaged app
+        shell: bash
+        run: |
+          mkdir -p pkg-check/smoke pkg-check/ui
+          run() { if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "$@"; else "$@"; fi; }
+          QUDIT_DATA_DIR=pkg-check/sd run "${{ matrix.exe }}" --smoke-test=pkg-check/smoke
+          QUDIT_DATA_DIR=pkg-check/ui/data run "${{ matrix.exe }}" --ui-check=pkg-check/ui
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qudit-build-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            pkg-check/
+          if-no-files-found: error

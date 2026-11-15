@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { giveToOwner } = require('./elevation');
 
 const SETTINGS_FILE = 'qudit-settings.json';
 
@@ -63,6 +64,7 @@ class Settings {
     if (next.assetTagPattern) new RegExp(next.assetTagPattern); // throws on invalid pattern
     fs.mkdirSync(this.dataDir, { recursive: true });
     fs.writeFileSync(this.file, JSON.stringify(next, null, 2));
+    giveToOwner(this.dataDir, this.file); // elevated on Linux: keep files the operator's
     this.values = next;
     return this.get();
   }
