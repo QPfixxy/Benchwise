@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, protocol, net, session, shell, dialog, systemPreferences, screen, utilityProcess } = require('electron');
 const si = require('systeminformation');
@@ -38,6 +39,7 @@ if (process.platform === 'win32' && app.isPackaged) {
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: 'qudit-pdf', privileges: { standard: true, secure: true } },
 ]);
 
 let mainWindow = null;
@@ -108,17 +110,36 @@ function logo() {
   return logoDataUrl;
 }
 
+// Report HTML is served from memory on a private, in-memory session rather
+// than written to a temp file: the packaged, elevated Windows app couldn't load
+// file:// URLs from %TEMP% (ERR_FAILED), and this avoids paths/ACLs everywhere.
+const pdfPages = new Map(); // id -> html
+let pdfSession = null;
+
+function getPdfSession() {
+  if (!pdfSession) {
+    pdfSession = session.fromPartition('qudit-pdf'); // no "persist:" = memory only
+    pdfSession.protocol.handle('qudit-pdf', (request) => {
+      const html = pdfPages.get(new URL(request.url).hostname);
+      return html
+        ? new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+        : new Response('Not found', { status: 404 });
+    });
+  }
+  return pdfSession;
+}
+
 async function renderPdf(audit) {
   const html = await renderReportHtml(audit, { logoDataUrl: logo() });
-  const tmp = path.join(app.getPath('temp'), `qudit-report-${process.pid}-${Date.now()}.html`);
-  await fsp.writeFile(tmp, html);
-  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
+  const id = crypto.randomUUID();
+  pdfPages.set(id, html);
+  const win = new BrowserWindow({ show: false, webPreferences: { session: getPdfSession(), sandbox: true, javascript: false } });
   try {
-    await win.loadFile(tmp);
+    await win.loadURL(`qudit-pdf://${id}/report.html`);
     return await win.webContents.printToPDF({ pageSize: 'Letter', printBackground: true });
   } finally {
     win.destroy();
-    fsp.rm(tmp, { force: true }).catch(() => {});
+    pdfPages.delete(id);
   }
 }
 
