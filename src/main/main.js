@@ -368,6 +368,15 @@ async function runUiCheck() {
   for (const [label, name] of [['Keyboard', '2-keyboard'], ['Display', '3-display'], ['Touchscreen', '3b-touch'], ['USB Ports', '4-ports'], ['Finish', '5-finish']]) {
     await click(label);
     await wait(name === '4-ports' ? 3000 : 600);
+    if (label === 'Keyboard' || label === 'Display') {
+      // CI machines are VMs that report a Desktop chassis, where these are
+      // auto-N/A (peripherals). Override like an operator would, so the test
+      // UI itself (and the override button) still get exercised.
+      const overridden = await js(
+        `(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent === 'Run this test anyway'); if (b) b.click(); return !!b; })()`,
+      );
+      if (overridden) await wait(600);
+    }
     await shot(name);
     if (name === '2-keyboard') {
       // Widest layout: the full board must fit without horizontal scrolling.

@@ -247,6 +247,12 @@ async function collectHardware() {
   });
   system.formFactor = form.formFactor;
   system.formFactorSource = form.source;
+  // Manual override for units with misleading firmware (and for testing).
+  const forced = process.env.BENCHWISE_FORM_FACTOR;
+  if (['laptop', 'tablet', 'all-in-one', 'desktop', 'server'].includes(forced)) {
+    system.formFactor = forced;
+    system.formFactorSource = 'override';
+  }
 
   const memory = n.normalizeMemory(raw.mem, raw.memLayout);
   const disks = n.normalizeDisks(raw.disks);

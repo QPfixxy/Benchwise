@@ -6,7 +6,7 @@ const FORM_LABELS = { laptop: 'Laptop', tablet: 'Tablet', 'all-in-one': 'All-in-
 function unitType(sys) {
   const label = FORM_LABELS[sys.formFactor] || null;
   if (!label) return sys.chassisType || null;
-  const why = sys.formFactorSource === 'battery' ? 'has a battery' : sys.formFactorSource === 'model' ? 'from model' : sys.chassisType ? `${sys.chassisType} chassis` : null;
+  const why = sys.formFactorSource === 'battery' ? 'has a battery' : sys.formFactorSource === 'model' ? 'from model' : sys.formFactorSource === 'override' ? 'set manually' : sys.chassisType ? `${sys.chassisType} chassis` : null;
   return why ? `${label} (${why})` : label;
 }
 

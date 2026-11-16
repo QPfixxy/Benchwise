@@ -63,6 +63,8 @@ The sidebar shows **✓ Administrator** or **⚠ Limited mode**, so a tester can
 
 **Portable / USB-stick mode:** create a folder named `benchwise-data` next to the executable (the Windows portable build does this automatically). Settings and reports are then kept in that folder instead of the machine's user profile. This lets you carry one stick between machines without leaving files behind. You can also set `BENCHWISE_DATA_DIR` to any path.
 
+**Unit type:** Benchwise reads whether the unit is a laptop, tablet, all-in-one, desktop or server from the firmware's chassis type. On desktops and servers the screen and keyboard are peripherals, so those tests are recorded as N/A; all-in-ones skip only the keyboard. If a unit's firmware reports the wrong type, start Benchwise with `BENCHWISE_FORM_FACTOR=laptop` (or `desktop`, `all-in-one`, `tablet`, `server`); reports show it as "set manually".
+
 ### Making a release
 
 1. Bump `version` in `package.json` and commit.
