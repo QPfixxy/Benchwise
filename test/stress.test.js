@@ -129,3 +129,21 @@ test('only one stress run at a time; stop gives no automatic verdict', { timeout
   assert.equal(result.verdict.status, null);
   assert.match(result.verdict.summary, /Stopped/);
 });
+
+test('telemetry never blocks: latest() answers at once, slow sensors are reported', async () => {
+  const { EventEmitter } = require('node:events');
+  const { TelemetrySampler } = require('../src/main/stress/telemetry');
+  const fake = new EventEmitter();
+  let terminated = false;
+  fake.terminate = async () => {
+    terminated = true;
+  };
+  const t = new TelemetrySampler({ createWorker: () => fake });
+  assert.deepEqual(t.latest(), { tempC: null, ghz: null }); // nothing sampled yet, no waiting
+  fake.emit('message', { type: 'sample', tempC: 71, ghz: 3.1 });
+  fake.emit('message', { type: 'note', note: 'slow sensor' });
+  assert.deepEqual(t.latest(), { tempC: 71, ghz: 3.1 });
+  assert.deepEqual(t.notes, ['slow sensor']);
+  t.stop();
+  assert.equal(terminated, true);
+});

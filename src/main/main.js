@@ -9,6 +9,7 @@ const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, protocol, net, session, shell, dialog, systemPreferences, screen, utilityProcess } = require('electron');
 const si = require('systeminformation');
 const { StressManager } = require('./stress/manager');
+const { TelemetrySampler, memInfo } = require('./stress/telemetry');
 const { isElevated, ensureLinuxElevation } = require('./elevation');
 
 const { collectHardware } = require('./hardware/collect');
@@ -203,13 +204,12 @@ function registerIpc() {
   });
 
   // Stress tests run in an isolated utility process; events stream to the UI.
+  // Telemetry comes from a worker thread so slow sensors can't stall the app.
+  const telemetry = new TelemetrySampler();
   stress = new StressManager({
     fork: forkUtility,
-    sampleTelemetry: async () => {
-      const [temp, speed] = await Promise.all([si.cpuTemperature().catch(() => ({})), si.cpuCurrentSpeed().catch(() => ({}))]);
-      return { tempC: temp.main > 0 ? temp.main : null, ghz: speed.avg > 0 ? speed.avg : null };
-    },
-    memInfo: () => si.mem(),
+    sampleTelemetry: async () => telemetry.latest(),
+    memInfo: () => memInfo(() => si.mem()),
     emit: (event) => mainWindow?.webContents.send('stress:event', event),
   });
   handle('stress:profiles', () => stress.profiles());

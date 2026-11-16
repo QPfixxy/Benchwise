@@ -2,6 +2,14 @@ import { el, fill, kvList, table } from '../dom.js';
 import { describeDevice } from '../devices.js';
 import { enabledTests } from '../app.js';
 
+const FORM_LABELS = { laptop: 'Laptop', tablet: 'Tablet', 'all-in-one': 'All-in-one', desktop: 'Desktop', server: 'Server', unknown: 'Unknown' };
+function unitType(sys) {
+  const label = FORM_LABELS[sys.formFactor] || null;
+  if (!label) return sys.chassisType || null;
+  const why = sys.formFactorSource === 'battery' ? 'has a battery' : sys.formFactorSource === 'model' ? 'from model' : sys.chassisType ? `${sys.chassisType} chassis` : null;
+  return why ? `${label} (${why})` : label;
+}
+
 const join = (...xs) => xs.filter(Boolean).join(' · ');
 
 function card(title, ...body) {
@@ -33,7 +41,7 @@ function render(hw, media) {
           ['Model', sys.model, true],
           ['Serial', sys.serial ? el('code', {}, sys.serial) : null, true],
           ['Version / SKU', join(sys.version, sys.sku)],
-          ['Chassis', sys.chassisType],
+          ['Unit type', unitType(sys)],
           ['BIOS', join(sys.bios?.vendor, sys.bios?.version, sys.bios?.releaseDate)],
           ['OS', join(sys.os?.distro, sys.os?.release, sys.os?.arch)],
           ['Virtual machine', sys.virtual ? 'Yes' : null],

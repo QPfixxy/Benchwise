@@ -95,8 +95,10 @@ export const PRESETS = {
   },
 };
 
-export function defaultPreset({ mac, chassisType }) {
-  const portable = /laptop|notebook|portable|convertible|detachable|tablet|sub ?notebook|hand held/i.test(chassisType || '');
+export function defaultPreset({ mac, chassisType, formFactor }) {
+  const portable = formFactor
+    ? formFactor === 'laptop' || formFactor === 'tablet'
+    : /laptop|notebook|portable|convertible|detachable|tablet|sub ?notebook|hand held/i.test(chassisType || '');
   if (mac) return portable ? 'mac' : 'full';
   return portable ? 'laptop' : 'full';
 }

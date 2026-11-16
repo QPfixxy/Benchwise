@@ -154,3 +154,45 @@ test('asset tags are validated server-side against path traversal and shop forma
   assert.equal(n.validateAssetTag('1234567-7654321x', '\\d{7}-\\d{7}').ok, false); // anchored
   assert.equal(n.validateAssetTag('ok', '(').ok, false); // bad pattern reported, not thrown
 });
+
+test('form factor: firmware chassis first, then Apple model name, then battery', () => {
+  const ff = (o) => n.classifyFormFactor(o).formFactor;
+  const cases = [
+    [{ chassisType: 'Notebook' }, 'laptop'],
+    [{ chassisType: 'Laptop' }, 'laptop'],
+    [{ chassisType: 'Convertible' }, 'laptop'],
+    [{ chassisType: 'Detachable' }, 'laptop'],
+    [{ chassisType: 'Tablet' }, 'tablet'],
+    [{ chassisType: 'All in One' }, 'all-in-one'],
+    [{ chassisType: 'Desktop' }, 'desktop'],
+    [{ chassisType: 'Mini Tower' }, 'desktop'],
+    [{ chassisType: 'Low Profile Desktop' }, 'desktop'],
+    [{ chassisType: 'Space-saving' }, 'desktop'],
+    [{ chassisType: 'Mini PC' }, 'desktop'],
+    [{ chassisType: 'Main Server Chassis' }, 'server'],
+    [{ chassisType: 'Rack Mount Chassis' }, 'server'],
+    // Firmware wins over a battery (e.g. a desktop reporting a UPS).
+    [{ chassisType: 'Tower', batteryPresent: true }, 'desktop'],
+    // Apple: marketing name, never the ambiguous "Mac14,x" identifier.
+    [{ model: 'Mac14,2 MacBook Air (M2, 2022)' }, 'laptop'],
+    [{ model: 'Mac14,3 Mac mini (2023)' }, 'desktop'],
+    [{ model: 'Mac13,1 Mac Studio (2022)' }, 'desktop'],
+    [{ model: 'iMac21,1 iMac (24-inch, M1, 2021)' }, 'all-in-one'],
+    // Placeholder chassis ("Other") falls back to the battery.
+    [{ chassisType: 'Other', batteryPresent: true }, 'laptop'],
+    [{ chassisType: 'Other' }, 'unknown'],
+    [{}, 'unknown'],
+  ];
+  for (const [input, want] of cases) assert.equal(ff(input), want, JSON.stringify(input));
+  assert.equal(n.classifyFormFactor({ chassisType: 'Notebook' }).source, 'chassis');
+  assert.equal(n.classifyFormFactor({ batteryPresent: true }).source, 'battery');
+});
+
+test('SMBIOS chassis codes from Linux sysfs', () => {
+  assert.equal(n.chassisName('10\n'), 'Notebook');
+  assert.equal(n.chassisName('3'), 'Desktop');
+  assert.equal(n.chassisName('13'), 'All in One');
+  assert.equal(n.chassisName('35'), 'Mini PC');
+  assert.equal(n.chassisName(''), null);
+  assert.equal(n.chassisName('99'), null);
+});

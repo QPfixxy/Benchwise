@@ -122,6 +122,49 @@ function normalizeSystem({ system = {}, chassis = {}, baseboard = {}, bios = {},
   };
 }
 
+// ------------------------------------------------------------- form factor
+
+// SMBIOS (DMTF DSP0134) chassis type codes, for /sys/class/dmi/id/chassis_type.
+const SMBIOS_CHASSIS = {
+  1: 'Other', 2: 'Unknown', 3: 'Desktop', 4: 'Low Profile Desktop', 5: 'Pizza Box', 6: 'Mini Tower', 7: 'Tower',
+  8: 'Portable', 9: 'Laptop', 10: 'Notebook', 11: 'Hand Held', 12: 'Docking Station', 13: 'All in One',
+  14: 'Sub Notebook', 15: 'Space-saving', 16: 'Lunch Box', 17: 'Main Server Chassis', 18: 'Expansion Chassis',
+  19: 'SubChassis', 20: 'Bus Expansion Chassis', 21: 'Peripheral Chassis', 22: 'RAID Chassis', 23: 'Rack Mount Chassis',
+  24: 'Sealed-case PC', 25: 'Multi-system chassis', 26: 'Compact PCI', 27: 'Advanced TCA', 28: 'Blade',
+  29: 'Blade Enclosure', 30: 'Tablet', 31: 'Convertible', 32: 'Detachable', 33: 'IoT Gateway', 34: 'Embedded PC',
+  35: 'Mini PC', 36: 'Stick PC',
+};
+
+function chassisName(code) {
+  return SMBIOS_CHASSIS[Number(String(code).trim())] || null;
+}
+
+const FORM_FACTOR_RULES = [
+  ['tablet', /^tablet$|hand ?held/i],
+  ['laptop', /laptop|notebook|portable|convertible|detachable/i],
+  ['all-in-one', /all[- ]?in[- ]?one/i],
+  ['server', /server|rack|blade|multi-system|raid|expansion|compact pci|advanced tca/i],
+  ['desktop', /desktop|tower|pizza|lunch ?box|space-saving|sealed-case|mini pc|stick pc|embedded|iot/i],
+];
+
+/**
+ * What kind of unit this is, which decides whether the screen and keyboard
+ * are part of it (laptop, tablet, all-in-one) or peripherals (desktop, server).
+ * Order of trust: firmware chassis type, then Apple model name, then battery.
+ * @returns {{ formFactor: 'laptop'|'tablet'|'all-in-one'|'desktop'|'server'|'unknown', source: string|null }}
+ */
+function classifyFormFactor({ chassisType, model, batteryPresent } = {}) {
+  for (const [formFactor, re] of FORM_FACTOR_RULES) {
+    if (re.test(chassisType || '')) return { formFactor, source: 'chassis' };
+  }
+  const m = model || '';
+  if (/macbook/i.test(m)) return { formFactor: 'laptop', source: 'model' };
+  if (/imac/i.test(m)) return { formFactor: 'all-in-one', source: 'model' };
+  if (/mac ?mini|macmini|mac ?studio|mac ?pro\b|macpro/i.test(m)) return { formFactor: 'desktop', source: 'model' };
+  if (batteryPresent) return { formFactor: 'laptop', source: 'battery' };
+  return { formFactor: 'unknown', source: null };
+}
+
 // ---------------------------------------------------------------- cpu
 
 function normalizeCpu(cpu = {}) {
@@ -332,6 +375,27 @@ function normalizeNetwork(ifaces = [], { hardwareOnly = false } = {}) {
     }));
 }
 
+/**
+ * Parses Windows `Get-NetAdapter -Physical` lines:
+ * Name|InterfaceDescription|MacAddress|PhysicalMediaType|ReceiveLinkSpeed(bits/s)
+ */
+function parseWindowsNetAdapters(text = '') {
+  return String(text)
+    .split(/\r?\n/)
+    .map((l) => l.trim().split('|'))
+    .filter((p) => p.length >= 5 && /^([0-9a-f]{2}-){5}[0-9a-f]{2}$/i.test(p[2].trim()))
+    .map(([name, desc, mac, media, speed]) => {
+      const bps = Number(speed);
+      return {
+        iface: name.trim(),
+        ifaceName: `${name.trim()}${desc.trim() ? ` (${desc.trim()})` : ''}`,
+        mac: mac.trim().replace(/-/g, ':'),
+        type: /802\.11|wireless|wi-?fi/i.test(media) ? 'wireless' : /802\.3/.test(media) ? 'wired' : media.trim() || null,
+        speed: bps > 0 ? Math.round(bps / 1e6) : null,
+      };
+    });
+}
+
 /** Parses `networksetup -listallhardwareports` (macOS), which reports burned-in MACs. */
 function parseMacHardwarePorts(text = '') {
   return String(text)
@@ -412,6 +476,9 @@ module.exports = {
   normalizeBattery,
   normalizeNetwork,
   parseMacHardwarePorts,
+  parseWindowsNetAdapters,
+  classifyFormFactor,
+  chassisName,
   normalizeUsb,
   overallStatus,
   validateAssetTag,

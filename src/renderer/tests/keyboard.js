@@ -15,7 +15,7 @@ export default {
     const byCode = new Map(allKeys.map((k) => [k.code, k]));
 
     const saved = ctx.result?.details?._state;
-    let preset = saved?.preset || defaultPreset({ mac, chassisType: ctx.state.hardware?.system?.chassisType });
+    let preset = saved?.preset || defaultPreset({ mac, chassisType: ctx.state.hardware?.system?.chassisType, formFactor: ctx.state.hardware?.system?.formFactor });
     const registered = new Set(saved?.registered || []);
     const excluded = new Set(saved?.excluded || PRESETS[preset].exclude);
     let sections = new Set(saved?.sections || PRESETS[preset].sections);

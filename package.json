@@ -85,7 +85,9 @@
       "artifactName": "Benchwise-${version}-linux-${arch}.${ext}"
     },
     "asarUnpack": [
-      "src/main/stress/**"
+      "src/main/stress/**",
+      "src/main/hardware/probe-worker.js",
+      "node_modules/systeminformation/**"
     ],
     "artifactName": "Benchwise-${version}-${os}-${arch}.${ext}",
     "publish": [

@@ -12,19 +12,35 @@ import { unitDevices } from './devices.js';
 
 const PORTABLE = /laptop|notebook|portable|convertible|detachable|tablet|sub ?notebook|hand ?held/i;
 const ALL_IN_ONE = /all[- ]?in[- ]?one|imac/i;
+const DESKTOP = /desktop|tower|pizza|lunch ?box|space-saving|sealed-case|mini pc|stick pc|server|rack|blade/i;
+
+/** Form factor from the scan; the regex fallback covers scans without one. */
+function formFactorOf(hw) {
+  const sys = hw.system || {};
+  if (sys.formFactor) return sys.formFactor;
+  const model = `${sys.model || ''} ${sys.version || ''}`;
+  if (PORTABLE.test(sys.chassisType || '') || /macbook/i.test(model) || hw.battery?.present) return 'laptop';
+  if (ALL_IN_ONE.test(sys.chassisType || '') || ALL_IN_ONE.test(model)) return 'all-in-one';
+  if (DESKTOP.test(sys.chassisType || '')) return /server|rack|blade/i.test(sys.chassisType) ? 'server' : 'desktop';
+  return 'unknown';
+}
 
 export function unitProfile(hw = {}) {
-  const chassis = hw.system?.chassisType || '';
-  const model = `${hw.system?.model || ''} ${hw.system?.version || ''}`;
-  const portable = PORTABLE.test(chassis) || /macbook/i.test(model) || Boolean(hw.battery?.present);
-  const allInOne = ALL_IN_ONE.test(chassis) || ALL_IN_ONE.test(model);
+  const formFactor = formFactorOf(hw);
+  const portable = formFactor === 'laptop' || formFactor === 'tablet';
+  const allInOne = formFactor === 'all-in-one';
   return {
+    formFactor,
     portable,
     allInOne,
+    // Desktops and servers: screen and keyboard are peripherals, not the unit.
+    separatePeripherals: formFactor === 'desktop' || formFactor === 'server',
     expectsBuiltInAV: portable || allInOne, // camera, mic, speakers, screen
     lidClosed: hw.capabilities?.lidClosed === true,
   };
 }
+
+const UNIT_NAME = { desktop: 'Desktop', server: 'Server', 'all-in-one': 'All-in-one', tablet: 'Tablet' };
 
 const LID_HINT = 'The lid is closed, so the built-in camera, microphone, keyboard and screen may be unavailable. Open the lid and rescan.';
 
@@ -65,6 +81,9 @@ export function applicability(testId, { hardware, media = {}, maxTouchPoints = 0
       return { state: 'na', reason: 'The OS reports no touch hardware: this is not a touchscreen model.' };
     }
     case 'display':
+      if (p.separatePeripherals) {
+        return { state: 'na', reason: `${UNIT_NAME[p.formFactor]} unit: the monitor is a separate peripheral, not part of this unit.` };
+      }
       return { state: 'ready', warning: p.lidClosed && p.portable ? 'The lid is closed: you are testing an external monitor, not the built-in panel.' : null };
     case 'cpu':
     case 'memory':
@@ -76,6 +95,12 @@ export function applicability(testId, { hardware, media = {}, maxTouchPoints = 0
             : null,
       };
     case 'keyboard':
+      if (p.separatePeripherals || p.allInOne) {
+        return { state: 'na', reason: `${UNIT_NAME[p.formFactor]} unit: the keyboard is a separate peripheral, not part of this unit.` };
+      }
+      if (p.formFactor === 'tablet') {
+        return { state: 'na', reason: 'Tablet: no built-in keyboard (a keyboard cover is an accessory).' };
+      }
       return { state: 'ready', warning: p.lidClosed && p.portable ? 'The lid is closed: keys typed now come from an external keyboard, not the built-in one.' : null };
     default:
       return { state: 'ready' };

@@ -87,3 +87,29 @@ test('applicability: lid closed explains a missing camera and warns on display/k
   assert.match(applicability('keyboard', { hardware: hw }).warning, /lid is closed/i);
   assert.equal(applicability('display', { hardware: laptop() }).warning, null);
 });
+
+test('applicability: screen and keyboard are peripherals on desktops, not on laptops', async () => {
+  const [, { applicability }] = await load();
+  const unit = (formFactor) => ({ system: { formFactor }, battery: { present: false }, capabilities: {} });
+
+  for (const ff of ['desktop', 'server']) {
+    const d = applicability('display', { hardware: unit(ff) });
+    assert.equal(d.state, 'na', ff);
+    assert.match(d.reason, /monitor is a separate peripheral/);
+    assert.equal(applicability('keyboard', { hardware: unit(ff) }).state, 'na', ff);
+  }
+  // All-in-one: built-in screen, separate keyboard.
+  assert.equal(applicability('display', { hardware: unit('all-in-one') }).state, 'ready');
+  assert.equal(applicability('keyboard', { hardware: unit('all-in-one') }).state, 'na');
+  // Tablet: built-in screen, no keyboard.
+  assert.equal(applicability('display', { hardware: unit('tablet') }).state, 'ready');
+  assert.equal(applicability('keyboard', { hardware: unit('tablet') }).state, 'na');
+  // Laptop and unknown: test both (never skip when unsure).
+  for (const ff of ['laptop', 'unknown']) {
+    assert.equal(applicability('display', { hardware: unit(ff) }).state, 'ready', ff);
+    assert.equal(applicability('keyboard', { hardware: unit(ff) }).state, 'ready', ff);
+  }
+  // Older scans without formFactor still work from the chassis string.
+  assert.equal(applicability('display', { hardware: desktop }).state, 'na');
+  assert.equal(applicability('keyboard', { hardware: laptop() }).state, 'ready');
+});
