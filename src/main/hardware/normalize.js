@@ -396,6 +396,24 @@ function parseWindowsNetAdapters(text = '') {
     });
 }
 
+// Adapters getmac lists that aren't network hardware in the unit.
+const NOT_A_NIC = /bluetooth|virtual|hyper-v|vethernet|vpn|\btap\b|tap-|wan miniport|loopback|vmware|virtualbox|npcap|tunnel|wireguard|tailscale|zerotier|fortinet|anyconnect|pangp|juniper|kernel debug/i;
+
+/** Parses `getmac /v /fo csv /nh` (Windows): "Connection","Adapter","MAC","Transport". */
+function parseGetmac(text = '') {
+  return String(text)
+    .split(/\r?\n/)
+    .map((line) => [...line.matchAll(/"([^"]*)"/g)].map((m) => m[1].trim()))
+    .filter((p) => p.length >= 3 && /^([0-9a-f]{2}-){5}[0-9a-f]{2}$/i.test(p[2]) && !NOT_A_NIC.test(`${p[0]} ${p[1]}`))
+    .map(([name, desc, mac]) => ({
+      iface: name,
+      ifaceName: `${name}${desc ? ` (${desc})` : ''}`,
+      mac: mac.replace(/-/g, ':'),
+      type: /wi-?fi|wireless|wlan|802\.11/i.test(`${name} ${desc}`) ? 'wireless' : 'wired',
+      speed: null,
+    }));
+}
+
 /** Parses `networksetup -listallhardwareports` (macOS), which reports burned-in MACs. */
 function parseMacHardwarePorts(text = '') {
   return String(text)
@@ -477,6 +495,7 @@ module.exports = {
   normalizeNetwork,
   parseMacHardwarePorts,
   parseWindowsNetAdapters,
+  parseGetmac,
   classifyFormFactor,
   chassisName,
   normalizeUsb,
