@@ -76,3 +76,27 @@ test('PDF template escapes hardware strings', async () => {
   assert.ok(!html.includes('<script>x'));
   assert.ok(html.includes('<svg')); // QR generated locally
 });
+
+test('PDF shows the Drive Health section and prefers it for the storage SMART column', async () => {
+  const hw = {
+    ...hardware,
+    storage: [{ model: 'Disk', serial: 'SN 1', smartStatus: 'Unknown' }],
+    driveHealth: {
+      ok: true,
+      drives: [
+        { model: '<i>Evil</i>', serial: 'SN1', status: 'fail', lifeRemaining: 40, powerOnHours: 12000, checks: [{ label: 'Pending sectors', value: 16, status: 'fail' }] },
+        { model: 'Stick', status: 'unknown', external: true, checks: [], reason: 'External drive' },
+      ],
+    },
+  };
+  const a = buildAudit({ input: { assetTag: 'TAG-3', tests: {} }, hardware: hw, settings, app });
+  const html = await renderReportHtml(a);
+  assert.ok(html.includes('<h2>Drive health</h2>'));
+  assert.ok(html.includes('&lt;i&gt;Evil&lt;/i&gt;') && !html.includes('<i>Evil'));
+  assert.ok(html.includes('Pending sectors: 16'));
+  assert.ok(html.includes('External, not counted'));
+  assert.ok(html.includes('<td>FAILING</td>'), 'storage row takes the Drive Health status by serial');
+
+  const plain = await renderReportHtml(buildAudit({ input: { assetTag: 'TAG-4', tests: {} }, hardware, settings, app }));
+  assert.ok(!plain.includes('Drive health'), 'no section when the test was not run');
+});

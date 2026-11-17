@@ -11,13 +11,14 @@ The **Release** workflow then:
 
 - builds Windows, macOS and Linux;
 - smoke-tests and UI-checks each packaged app on its own OS;
+- fails if the packaged app doesn't contain its own smartctl;
 - attaches the files to a **draft** GitHub release.
 
 Review the draft, add release notes, and click **Publish**. The workflow refuses a tag that doesn't match the `package.json` version.
 
 **Test builds without publishing:** run **Actions → Release → Run workflow**. The builds appear as artifacts on that run.
 
-**Local builds:** `npm run dist:win`, `npm run dist:mac` or `npm run dist:linux`, with output in `dist/`. Build each platform on its own OS. For a Mac build without the signing certificate, use `npm run dist:mac:unsigned`.
+**Local builds:** run `npm run vendor:smartctl` first, so the build includes smartctl. Then `npm run dist:win`, `npm run dist:mac` or `npm run dist:linux`, with output in `dist/`. Build each platform on its own OS. For a Mac build without the signing certificate, use `npm run dist:mac:unsigned`.
 
 ## Mac signing and notarization (one-time setup)
 

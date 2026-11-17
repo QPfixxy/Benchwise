@@ -50,6 +50,14 @@ jobs:
       - run: npm ci
       - run: npm test
 
+      - name: Cache smartctl build
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: smartctl-${{ runner.os }}-${{ hashFiles('scripts/vendor-smartctl.js') }}
+      - name: Bundle smartctl (drive health)
+        run: node scripts/vendor-smartctl.js
+
       - name: Build
         shell: bash
         env:
@@ -95,6 +103,9 @@ jobs:
 
       - name: Smoke test the packaged app
         shell: bash
+        env:
+          # Fails the smoke test if smartctl didn't make it into the package.
+          BENCHWISE_REQUIRE_BUNDLED_SMARTCTL: '1'
         run: |
           mkdir -p pkg-check/smoke pkg-check/ui
           run() { if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "$@"; else "$@"; fi; }

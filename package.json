@@ -19,7 +19,8 @@
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
     "dist:dir": "electron-builder --dir",
-    "dist:mac:unsigned": "electron-builder --mac -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false"
+    "dist:mac:unsigned": "electron-builder --mac -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false",
+    "vendor:smartctl": "node scripts/vendor-smartctl.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
@@ -47,7 +48,17 @@
         "nsis"
       ],
       "icon": "build/icon.png",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "requireAdministrator",
+      "extraResources": [
+        {
+          "from": "vendor/smartctl/win32-x64",
+          "to": "smartctl",
+          "filter": [
+            "**/*",
+            "!VERSION"
+          ]
+        }
+      ]
     },
     "portable": {
       "artifactName": "Benchwise-${version}-windows-portable.exe",
@@ -73,7 +84,17 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "extraResources": [
+        {
+          "from": "vendor/smartctl/darwin-universal",
+          "to": "smartctl",
+          "filter": [
+            "**/*",
+            "!VERSION"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -82,7 +103,17 @@
       "category": "Utility",
       "icon": "build/icon.png",
       "executableName": "benchwise",
-      "artifactName": "Benchwise-${version}-linux-${arch}.${ext}"
+      "artifactName": "Benchwise-${version}-linux-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "vendor/smartctl/linux-x64",
+          "to": "smartctl",
+          "filter": [
+            "**/*",
+            "!VERSION"
+          ]
+        }
+      ]
     },
     "asarUnpack": [
       "src/main/stress/**",

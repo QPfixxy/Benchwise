@@ -262,7 +262,7 @@ async function collectHardware() {
     warnings.push('Some firmware details (serials, memory modules) need administrator access on Linux. Restart Benchwise and choose "Continue as administrator" (or run it with sudo).');
   }
   if (disks.some((d) => d.smartStatus === 'Unknown')) {
-    warnings.push('SMART status unavailable for one or more drives (install smartmontools for drive health).');
+    warnings.push('SMART status unavailable in the inventory for one or more drives. The Drive Health test reads it directly.');
   }
 
   return {

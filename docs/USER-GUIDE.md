@@ -38,6 +38,7 @@ Every N/A can be overridden with **Run this test anyway**. If a unit's firmware 
 | Microphone | 5-second raw recording without OS noise suppression, with a level meter, silence detection and playback |
 | Speakers | Separate left and right tones, a frequency sweep, a music sample, and an output picker |
 | USB Ports | See [USB port test](#usb-port-test) |
+| Drive Health | See [Drive health](#drive-health) |
 | CPU Stress | Every core runs integer, floating-point, cache and SHA-256 workloads with known answers, and one wrong answer fails the unit. Throughput is tracked in 5-second windows to detect thermal throttling. Temperature and clock are sampled where the OS allows. Profiles: 2, 10 or 30 minutes |
 | Memory Test | Fills 50–80% of free RAM with 7 patterns: stuck bits, coupling, walking ones, address lines and random. Every chunk is written before any is verified, so data really goes through RAM. A mismatch fails with the address and the flipped bits. It's a user-space test: RAM reserved by the OS isn't covered, so use a bootable tester such as MemTest86 on suspect units |
 
@@ -46,6 +47,20 @@ Every N/A can be overridden with **Run this test anyway**. If a unit's firmware 
 Any USB flash drive with about 100 MB free can be a **test drive**. Prepare it once from the USB Ports page. This adds a `BENCHWISE-TEST-DRIVE` folder and a marker file, and nothing on the drive is erased. A USB 3 drive lets Benchwise tell USB 3 ports from USB 2 ports by speed.
 
 Then plug the drive into each port in turn. For each port Benchwise records the physical port location, the negotiated link speed, the read and write speed, and a SHA-256 integrity check of a reference file. It then ejects the drive so you can move to the next port. The test passes when every expected port is verified, and any data corruption fails it. Keep the stick labelled as the bench test drive.
+
+### Drive health
+
+Opening the Drive Health page reads every drive's own health records (SMART) with `smartctl`, which ships inside Benchwise. It takes a few seconds per drive and sets the verdict automatically.
+
+| Result | When |
+|---|---|
+| **Fail** | The drive's SMART self-assessment says failing; any pending or uncorrectable sectors; 100 or more reallocated sectors; an attribute below its failure threshold now; NVMe critical warnings, spare below threshold or media errors; rated write endurance used up; the last self-test failed |
+| **Pass, with warnings** | Some reallocated sectors; 80% or more of rated endurance used; interface CRC errors (usually the cable); logged ATA errors; 70°C or hotter |
+| **Pass** | None of the above |
+| **No automatic verdict** | An internal drive couldn't be read (e.g. no administrator access): judge it and set the result by hand |
+| **N/A** | The inventory found no internal drive (pulled drive) |
+
+Each drive shows life remaining, power-on time, temperature, data written and power cycles, and all of it goes into the report. USB drives (including the USB test drive) are listed but not counted. If you suspect a drive the scan reports as healthy, a long self-test or a full surface scan is still the thorough check.
 
 ## Administrator access
 

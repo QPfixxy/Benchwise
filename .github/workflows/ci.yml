@@ -23,6 +23,14 @@ jobs:
       - run: npm ci
       - run: npm test
 
+      - name: Cache smartctl build
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: smartctl-${{ runner.os }}-${{ hashFiles('scripts/vendor-smartctl.js') }}
+      - name: Bundle smartctl (drive health)
+        run: node scripts/vendor-smartctl.js
+
       - name: Smoke test (real hardware scan + PDF)
         shell: bash
         run: |

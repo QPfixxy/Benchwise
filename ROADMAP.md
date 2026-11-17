@@ -28,7 +28,7 @@ The old page returned `Math.random()`. The real versions share one architecture:
 | **GPU** | WebGPU/WebGL2 render loop full-screen for N minutes; periodically render a fixed reference frame, read pixels back, and compare to the first frame's hash | No frame mismatches (artifacting), no context loss, stable FPS | Uses the same bundled Chromium on every OS, so results are comparable |
 | **Battery** | Run a fixed load for 5–10 min while sampling capacity; then prompt to plug and unplug the charger | Measured discharge rate gives estimated runtime; charging is detected on plug-in | Confirms the AC adapter and charging circuit as well as health |
 
-**Deliverable order:** ~~runner and telemetry framework → CPU → memory~~ (done) → SMART → storage performance → GPU → battery.
+**Deliverable order:** ~~runner and telemetry framework → CPU → memory~~ (done) → SMART (in progress, `feature/drive-health`) → storage performance → GPU → battery.
 
 The framework (isolated host process, worker threads, telemetry sampler, profile-driven verdicts in `src/main/stress/`) is in place. New stress tests add a worker script, a verdict function and a renderer page that calls `mountStress`.
 
