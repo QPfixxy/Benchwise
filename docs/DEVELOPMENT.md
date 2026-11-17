@@ -30,7 +30,7 @@ To check behaviour as another unit type, set `BENCHWISE_FORM_FACTOR` (e.g. `desk
 - **Main process (Node):** scans the hardware, saves reports and starts the stress tests.
 - **Renderer:** the UI, in plain ES modules with no framework. It's sandboxed, and only reaches the system through the small API in `preload.js`.
 - **Work that might block runs off the main thread:**
-  - Each hardware probe has its own worker thread.
+  - Hardware probes run on worker threads. macOS and Linux use a pool, one worker per probe. Windows runs them one after another in a single worker that keeps one PowerShell open, because systeminformation otherwise starts a new PowerShell per query, which took ~9 s each on some HP images. A probe that hangs times out on its own and the rest carry on. `BENCHWISE_PROBE_MODE=pool|batch` overrides this for comparison.
   - Stress tests run in a separate utility process.
   - CPU telemetry has its own worker.
 
@@ -45,7 +45,7 @@ src/
     elevation.js          admin detection; Linux pkexec relaunch
     hardware/
       collect.js          probe pool, timeouts, timings, direct NIC reads, fallbacks
-      probe-worker.js     runs one systeminformation probe on its own thread
+      probe-worker.js     runs systeminformation probes off the main thread (one, or a batch)
       normalize.js        pure functions: raw data -> report schema (incl. unit type)
       usbtree.js          per-OS USB tree with port locations and link speeds
     ports/

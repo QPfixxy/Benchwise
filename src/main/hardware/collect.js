@@ -8,10 +8,16 @@ const { Worker } = require('node:worker_threads');
 const n = require('./normalize');
 
 const PROBE_TIMEOUT_MS = 25000;
+const CONCURRENCY = 6;
 // Windows: systeminformation starts a fresh PowerShell for nearly every query.
-// Dozens at once can take minutes on images with heavy endpoint/vendor
-// software, so only a few probes run at a time there.
-const CONCURRENCY = process.platform === 'win32' ? 3 : 6;
+// On some HP images each start took ~9 s, so probes timed out even one at a
+// time. There, every probe runs in ONE worker that keeps ONE PowerShell open
+// (see probe-worker.js). BENCHWISE_PROBE_MODE=pool|batch overrides, to compare.
+const PROBE_MODE = ['pool', 'batch'].includes(process.env.BENCHWISE_PROBE_MODE)
+  ? process.env.BENCHWISE_PROBE_MODE
+  : process.platform === 'win32'
+    ? 'batch'
+    : 'pool';
 const PROBE_WORKER = path.join(__dirname, 'probe-worker.js').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 // Most important first: with limited concurrency these finish earliest.
@@ -86,6 +92,96 @@ async function runProbes(list, { run = probeInWorker, concurrency = CONCURRENCY,
   return { raw, warnings, timings };
 }
 
+function createBatchWorker(names) {
+  return new Worker(PROBE_WORKER, { workerData: { names, persistent: process.platform === 'win32' } });
+}
+
+/**
+ * Runs probes one after another in a single worker (Windows). Each probe still
+ * gets its own timeout: if one hangs, it's recorded as timed out, the worker
+ * (and its PowerShell) is dropped, and the rest continue in a fresh worker.
+ */
+function runProbesBatched(list, { createWorker = createBatchWorker, timeoutMs = PROBE_TIMEOUT_MS, now = Date.now, tickMs = 250 } = {}) {
+  const raw = {};
+  const warnings = [];
+  const timings = {};
+  const fallback = Object.fromEntries(list);
+  const pending = list.map(([k]) => k);
+  const fail = (key, ms, message) => {
+    raw[key] = fallback[key];
+    warnings.push(`${key}: ${message}`);
+    timings[key] = { ms, ok: false, error: message };
+  };
+
+  return new Promise((resolve) => {
+    let worker = null;
+    let current = null; // { key, t0 }
+    let timer = null;
+
+    const finish = () => {
+      clearInterval(timer);
+      resolve({ raw, warnings, timings });
+    };
+    const drop = () => {
+      if (!worker) return;
+      worker.removeAllListeners();
+      worker.on('error', () => {});
+      worker.terminate()?.catch?.(() => {});
+      worker = null;
+    };
+    const start = () => {
+      if (!pending.length) return finish();
+      const w = createWorker([...pending]);
+      worker = w;
+      let batchStart = now();
+      w.on('message', (m) => {
+        if (w !== worker) return;
+        if (m?.type === 'start') {
+          // The first probe also pays for starting PowerShell, so it's timed from the batch start.
+          current = { key: m.name, t0: batchStart ?? now() };
+          batchStart = null;
+        } else if (m?.type === 'result') {
+          const ms = now() - (current?.t0 ?? now());
+          pending.splice(pending.indexOf(m.name), 1);
+          if (m.ok) {
+            raw[m.name] = m.value;
+            timings[m.name] = { ms, ok: true };
+          } else fail(m.name, ms, m.error || 'failed');
+          current = null;
+        } else if (m?.type === 'done') {
+          drop();
+          start();
+        }
+      });
+      const died = (message) => {
+        if (w !== worker) return;
+        drop();
+        const key = current?.key ?? pending[0];
+        if (key) {
+          pending.splice(pending.indexOf(key), 1);
+          fail(key, now() - (current?.t0 ?? now()), message);
+        }
+        current = null;
+        start();
+      };
+      w.on('error', (err) => died(err?.message || 'probe worker failed'));
+      w.on('exit', (code) => died(`probe stopped unexpectedly (exit ${code})`));
+    };
+
+    timer = setInterval(() => {
+      if (worker && current && now() - current.t0 > timeoutMs) {
+        const { key, t0 } = current;
+        current = null;
+        drop();
+        pending.splice(pending.indexOf(key), 1);
+        fail(key, now() - t0, `timed out after ${timeoutMs / 1000}s`);
+        start();
+      }
+    }, tickMs);
+    start();
+  });
+}
+
 function run(cmd, args, timeout = 8000) {
   return new Promise((resolve) => {
     // execFile, not exec: no shell, so nothing here is ever interpreted.
@@ -144,19 +240,29 @@ async function linuxNics(root = '/sys/class/net') {
   return out;
 }
 
-/** Windows: one PowerShell call for physical adapters (incl. disconnected ones). */
-async function windowsNics() {
-  const out = await run(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      'Get-NetAdapter -Physical | ForEach-Object { "$($_.Name)|$($_.InterfaceDescription)|$($_.MacAddress)|$($_.PhysicalMediaType)|$($_.ReceiveLinkSpeed)" }',
-    ],
-    15000,
-  );
-  return n.parseWindowsNetAdapters(out);
+/**
+ * Windows: physical adapters, including disconnected ones. `getmac` is a plain
+ * Windows program (no PowerShell), so it answers fast even where PowerShell
+ * is slow to start; Get-NetAdapter adds link speeds when it finishes in time.
+ */
+async function windowsNics({ exec = run } = {}) {
+  const [fast, full] = await Promise.all([
+    exec('getmac', ['/v', '/fo', 'csv', '/nh'], 8000).then(n.parseGetmac),
+    exec(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        'Get-NetAdapter -Physical | ForEach-Object { "$($_.Name)|$($_.InterfaceDescription)|$($_.MacAddress)|$($_.PhysicalMediaType)|$($_.ReceiveLinkSpeed)" }',
+      ],
+      20000,
+    ).then(n.parseWindowsNetAdapters),
+  ]);
+  if (!full.length) return fast;
+  // Get-NetAdapter is the better source; keep any adapter only getmac saw.
+  const seen = new Set(full.map((a) => a.mac.toUpperCase()));
+  return [...full, ...fast.filter((a) => !seen.has(a.mac.toUpperCase()))];
 }
 
 /**
@@ -214,7 +320,7 @@ async function collectHardware() {
       return [];
     });
   const [{ raw, warnings, timings }, network] = await Promise.all([
-    runProbes(PROBES),
+    PROBE_MODE === 'batch' ? runProbesBatched(PROBES) : runProbes(PROBES),
     withTimeout(collectNetwork(siNetwork), PROBE_TIMEOUT_MS + 5000, 'network').catch((err) => {
       netWarnings.push(err.message);
       return [];
@@ -280,9 +386,9 @@ async function collectHardware() {
     capabilities: { lidClosed: await lidClosed() },
     // How long each probe took. Saved with the report so a slow or
     // incomplete scan on an unusual model can be diagnosed afterwards.
-    diagnostics: { probes: timings, concurrency: CONCURRENCY, timeoutMs: PROBE_TIMEOUT_MS },
+    diagnostics: { probes: timings, mode: PROBE_MODE, concurrency: PROBE_MODE === 'pool' ? CONCURRENCY : 1, timeoutMs: PROBE_TIMEOUT_MS },
     warnings,
   };
 }
 
-module.exports = { collectHardware, runProbes, linuxNics };
+module.exports = { collectHardware, runProbes, runProbesBatched, linuxNics, windowsNics };
