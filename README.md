@@ -33,6 +33,7 @@ On Windows and Linux, Benchwise asks for administrator access at launch. Firmwar
 | Microphone | Raw recording with level meter and silence detection |
 | Speakers | Left/right channels, frequency sweep, music sample |
 | USB Ports | A prepared flash drive in each port: location, link speed, read/write speed, data integrity |
+| Drive Health | Each internal drive's SMART data: failing sectors, NVMe critical warnings, wear (% life left), power-on hours |
 | CPU Stress | Every core runs workloads with known answers; one wrong answer fails the unit. Detects throttling |
 | Memory Test | Seven bit patterns across free RAM; any mismatch fails with the failing address |
 

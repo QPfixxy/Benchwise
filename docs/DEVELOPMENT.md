@@ -23,6 +23,8 @@ npm run check:ui    # hidden window: visits every page, runs short CPU/memory st
 
 CI runs all three on Windows, macOS and Linux and uploads the reports and screenshots as build artifacts. CI machines report a Desktop chassis, so the UI check presses "Run this test anyway" on the Keyboard and Display pages.
 
+**Drive health locally:** run `npm run vendor:smartctl` once. It downloads smartmontools 7.5 (checksum-pinned), builds or extracts `smartctl` for your OS, and puts it in `vendor/smartctl/` (git-ignored). Without it, Benchwise uses a system copy (e.g. `brew install smartmontools`) or shows "tool not found". CI and release runs do this step automatically.
+
 To check behaviour as another unit type, set `BENCHWISE_FORM_FACTOR` (e.g. `desktop`). To keep test runs out of your real settings and reports, set `BENCHWISE_DATA_DIR`.
 
 ## Architecture
@@ -33,6 +35,7 @@ To check behaviour as another unit type, set `BENCHWISE_FORM_FACTOR` (e.g. `desk
   - Each hardware probe has its own worker thread.
   - Stress tests run in a separate utility process.
   - CPU telemetry has its own worker.
+  - Drive health runs `smartctl` as async child processes, one drive at a time, each with a timeout.
 
   The OS commands behind `systeminformation` are often synchronous and can be slow on some firmware. Kept off the main thread, they can only delay their own result.
 
@@ -48,6 +51,9 @@ src/
       probe-worker.js     runs one systeminformation probe on its own thread
       normalize.js        pure functions: raw data -> report schema (incl. unit type)
       usbtree.js          per-OS USB tree with port locations and link speeds
+    drives/
+      smartctl.js         finds and runs smartctl (bundled first), scans and reads each drive
+      health.js           pure functions: smartctl JSON -> drive checks -> verdict
     ports/
       testdrive.js        test-drive prep, read/write benchmark, port watcher, eject
     stress/
@@ -67,6 +73,10 @@ src/
     views/                overview, finish, reports, settings
     tests/                one module per functional test
 test/                     node:test unit tests
+scripts/
+  electron.js             launcher (clears ELECTRON_RUN_AS_NODE)
+  vendor-smartctl.js      fetches and builds the bundled smartctl
+vendor/                   build-time downloads (git-ignored)
 build/                    icons (SVG sources and PNGs) and Mac entitlements
 ```
 

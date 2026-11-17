@@ -102,6 +102,16 @@ export function applicability(testId, { hardware, media = {}, maxTouchPoints = 0
         return { state: 'na', reason: 'Tablet: no built-in keyboard (a keyboard cover is an accessory).' };
       }
       return { state: 'ready', warning: p.lidClosed && p.portable ? 'The lid is closed: keys typed now come from an external keyboard, not the built-in one.' : null };
+    case 'drives': {
+      // Only trust "no drive" if the disk scan itself worked (a timed-out
+      // probe also gives an empty list).
+      const scanned = hardware.diagnostics?.probes?.disks?.ok !== false;
+      const internal = (hardware.storage || []).filter((d) => !d.removable);
+      if (scanned && !internal.length) {
+        return { state: 'na', reason: 'No internal drive detected: the drive has been removed. If one is fitted, it is not being seen; check that it is seated.' };
+      }
+      return { state: 'ready' };
+    }
     default:
       return { state: 'ready' };
   }

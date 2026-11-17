@@ -13,6 +13,7 @@ const { TelemetrySampler, memInfo } = require('./stress/telemetry');
 const { isElevated, ensureLinuxElevation } = require('./elevation');
 
 const { collectHardware } = require('./hardware/collect');
+const { checkDrives } = require('./drives/smartctl');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
 const { Settings, resolveDataDir } = require('./settings');
 const { ReportStore, buildAudit } = require('./reports/store');
@@ -57,6 +58,19 @@ let lastHardware = null;
 let hardwarePromise = null;
 let keyboardCapture = false;
 let stress = null;
+let lastDriveHealth = null;
+let drivePromise = null;
+
+/** Drive Health test: one check at a time; the latest result goes into the saved report. */
+function getDriveHealth() {
+  if (!drivePromise) {
+    drivePromise = (async () => {
+      const hw = lastHardware || (await getHardware().catch(() => null));
+      return (lastDriveHealth = await checkDrives({ inventory: hw?.storage || [] }));
+    })().finally(() => (drivePromise = null));
+  }
+  return drivePromise;
+}
 
 /** Starts a script in an Electron utility process (separate OS process). */
 function forkUtility(file) {
@@ -164,6 +178,7 @@ function handle(channel, fn) {
 function registerIpc() {
   handle('app:info', async () => ({ ...appInfo(), elevated: await isElevated() }));
   handle('hardware:collect', (force) => getHardware(Boolean(force)));
+  handle('drives:check', () => getDriveHealth());
   // USB port test (test drive)
   const ports = new PortWatcher();
   handle('ports:start', () => ports.start());
@@ -193,7 +208,8 @@ function registerIpc() {
   });
 
   handle('audit:save', async (input) => {
-    const hardware = lastHardware || (await getHardware());
+    const hw = lastHardware || (await getHardware());
+    const hardware = lastDriveHealth ? { ...hw, driveHealth: lastDriveHealth } : hw;
     const audit = buildAudit({ input: input || {}, hardware, settings: settings.get(), app: appInfo() });
     const saved = await store.save(audit);
     return { ...saved, overall: audit.overall, id: audit.id };
@@ -308,6 +324,12 @@ async function runSmokeTest() {
     : fs.mkdtempSync(path.join(os.tmpdir(), 'benchwise-smoke-'));
   const smokeStore = new ReportStore(() => outDir, renderPdf);
   const hw = await collectHardware();
+  hw.driveHealth = await checkDrives({ inventory: hw.storage });
+  const tool = hw.driveHealth.tool || null;
+  // Release builds must carry their own smartctl (checks the packaging).
+  if (process.env.BENCHWISE_REQUIRE_BUNDLED_SMARTCTL === '1' && tool?.source !== 'bundled') {
+    throw new Error(`bundled smartctl not found (got ${tool ? `${tool.source}: ${tool.file}` : 'none'})`);
+  }
   const audit = buildAudit({
     input: {
       assetTag: 'SMOKE-TEST',
@@ -321,7 +343,14 @@ async function runSmokeTest() {
   });
   const saved = await smokeStore.save(audit);
   const listed = await smokeStore.list();
-  const summary = { ok: Boolean(saved.pdfPath), saved, listed: listed.length, durationMs: hw.durationMs, warnings: hw.warnings };
+  const summary = {
+    ok: Boolean(saved.pdfPath),
+    saved,
+    listed: listed.length,
+    durationMs: hw.durationMs,
+    warnings: hw.warnings,
+    driveHealth: { tool, error: hw.driveHealth.error || null, drives: hw.driveHealth.drives.length, verdict: hw.driveHealth.verdict },
+  };
   fs.writeFileSync(path.join(outDir, 'smoke-result.json'), JSON.stringify(summary, null, 2));
   await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`, resolve));
   if (!saved.pdfPath) throw new Error(`PDF failed: ${saved.pdfError}`);
@@ -365,9 +394,22 @@ async function runUiCheck() {
   await wait(500); // let a hidden window repaint before capture (Windows serves stale frames otherwise)
   await shot('1-overview');
   await js(`document.getElementById('assetTagInput').value='TEST-001'; document.getElementById('assetTagInput').dispatchEvent(new Event('input'))`);
-  for (const [label, name] of [['Keyboard', '2-keyboard'], ['Display', '3-display'], ['Touchscreen', '3b-touch'], ['USB Ports', '4-ports'], ['Finish', '5-finish']]) {
+  for (const [label, name] of [
+    ['Keyboard', '2-keyboard'],
+    ['Display', '3-display'],
+    ['Touchscreen', '3b-touch'],
+    ['USB Ports', '4-ports'],
+    ['Drive Health', '4b-drives'],
+    ['Finish', '5-finish'],
+  ]) {
     await click(label);
     await wait(name === '4-ports' ? 3000 : 600);
+    if (label === 'Drive Health') {
+      // CI VMs have virtual disks only, so this is often auto-N/A.
+      await js(`[...document.querySelectorAll('button')].find(b => b.textContent === 'Run this test anyway')?.click()`);
+      for (let i = 0; i < 120 && (await js(`!!document.querySelector('.drive-health .spinner')`)); i++) await wait(500);
+      await wait(300);
+    }
     if (label === 'Keyboard' || label === 'Display') {
       // CI machines are VMs that report a Desktop chassis, where these are
       // auto-N/A (peripherals). Override like an operator would, so the test

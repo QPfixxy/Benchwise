@@ -25,6 +25,7 @@ const TEST_NAMES = {
   display: 'Display',
   touchscreen: 'Touchscreen',
   ports: 'USB Ports',
+  drives: 'Drive Health',
   cpu: 'CPU Stress',
   memory: 'Memory Test',
 };
@@ -59,6 +60,34 @@ function detailText(details) {
     .join('; ');
 }
 
+const DRIVE_STATUS = { pass: ['PASS', 's-pass'], warn: ['PASS (warnings)', 's-warn'], fail: ['FAIL', 's-fail'], unknown: ['NOT READABLE', 'na'] };
+
+// The Drive Health test reads SMART directly; prefer it over the inventory scan.
+const SMART_FROM_HEALTH = { pass: 'OK', warn: 'OK (warnings)', fail: 'FAILING' };
+const normSerial = (v) => String(v || '').replace(/\s+/g, '').toUpperCase();
+function healthBySerial(dh, serial) {
+  if (!dh?.ok || !serial) return null;
+  return (dh.drives || []).find((d) => d.serial && normSerial(d.serial) === normSerial(serial)) || null;
+}
+
+/** Per-drive SMART results from the Drive Health test (only if it was run). */
+function driveHealthSection(dh) {
+  if (!dh?.ok || !dh.drives?.length) return '';
+  const rows = dh.drives.map((d) => {
+    const [label, cls] = d.external ? ['External, not counted', 'na'] : DRIVE_STATUS[d.status] || DRIVE_STATUS.unknown;
+    const issues = (d.checks || []).filter((c) => c.status !== 'ok').map((c) => `${c.label}: ${c.value}`);
+    return [
+      [d.model || d.name, d.capacity].filter(Boolean).join(' '),
+      d.serial,
+      { html: esc(label), cls },
+      d.lifeRemaining != null ? `${d.lifeRemaining}%` : null,
+      d.powerOnHours != null ? d.powerOnHours.toLocaleString('en-US') : null,
+      issues.length ? issues.join('; ') : d.reason || 'None',
+    ];
+  });
+  return `<h2>Drive health</h2>${grid(['Drive', 'Serial', 'Health', 'Life left', 'Power-on hrs', 'Issues'], rows)}`;
+}
+
 async function renderReportHtml(audit, { logoDataUrl } = {}) {
   const hw = audit.hardware || {};
   const sys = hw.system || {};
@@ -84,7 +113,7 @@ async function renderReportHtml(audit, { logoDataUrl } = {}) {
   header h1 { font-size: 15pt; margin: 0; }
   header .sub { color: #555; font-size: 8.5pt; }
   .overall { font-weight: 700; font-size: 12pt; padding: 6px 12px; border-radius: 4px; border: 2px solid; }
-  .s-pass { color: #0a6b2d; border-color: #0a6b2d; } .s-fail { color: #b00020; border-color: #b00020; }
+  .s-pass { color: #0a6b2d; border-color: #0a6b2d; } .s-warn { color: #8a5a00; } .s-fail { color: #b00020; border-color: #b00020; }
   .s-incomplete, .s-untested { color: #8a5a00; border-color: #8a5a00; } .s-na { color: #555; border-color: #999; }
   .ids { display: flex; gap: 18px; margin: 10px 0 4px; }
   .id { display: flex; gap: 8px; align-items: center; }
@@ -155,8 +184,12 @@ ${
 <h2>Storage</h2>
 ${grid(
   ['Model', 'Capacity', 'Type', 'Serial', 'SMART', 'Power-on hrs'],
-  (hw.storage || []).map((d) => [d.model, d.capacity, d.kind, d.serial, d.smartStatus, d.powerOnHours]),
+  (hw.storage || []).map((d) => {
+    const h = healthBySerial(hw.driveHealth, d.serial);
+    return [d.model, d.capacity, d.kind, d.serial, h ? SMART_FROM_HEALTH[h.status] || d.smartStatus : d.smartStatus, h?.powerOnHours ?? d.powerOnHours];
+  }),
 )}
+${driveHealthSection(hw.driveHealth)}
 
 <div class="cols">
   <section><h2>Graphics</h2>${grid(

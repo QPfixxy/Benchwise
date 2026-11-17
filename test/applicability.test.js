@@ -113,3 +113,13 @@ test('applicability: screen and keyboard are peripherals on desktops, not on lap
   assert.equal(applicability('display', { hardware: desktop }).state, 'na');
   assert.equal(applicability('keyboard', { hardware: laptop() }).state, 'ready');
 });
+
+test('drive health: N/A only when the disk scan worked and found no internal drive', async () => {
+  const [, { applicability }] = await load();
+  const hw = (storage, disksOk = true) => ({ system: {}, storage, diagnostics: { probes: { disks: { ok: disksOk } } } });
+  assert.equal(applicability('drives', { hardware: hw([{ model: 'SSD', removable: false }]) }).state, 'ready');
+  assert.equal(applicability('drives', { hardware: hw([]) }).state, 'na');
+  assert.equal(applicability('drives', { hardware: hw([{ model: 'USB stick', removable: true }]) }).state, 'na');
+  // A timed-out disk probe (seen on HP firmware) must not hide the test.
+  assert.equal(applicability('drives', { hardware: hw([], false) }).state, 'ready');
+});
