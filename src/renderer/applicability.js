@@ -102,6 +102,22 @@ export function applicability(testId, { hardware, media = {}, maxTouchPoints = 0
         return { state: 'na', reason: 'Tablet: no built-in keyboard (a keyboard cover is an accessory).' };
       }
       return { state: 'ready', warning: p.lidClosed && p.portable ? 'The lid is closed: keys typed now come from an external keyboard, not the built-in one.' : null };
+    case 'mdm': {
+      // The Autopilot lock is only trustworthy during Windows setup, when
+      // Windows downloads its Autopilot profile from Microsoft.
+      const mode = hardware.environment?.mode;
+      if (mode === 'oobe') return { state: 'ready' };
+      if (!['audit', 'windows', 'winpe'].includes(mode)) {
+        return { state: 'na', reason: 'Windows only: the Autopilot lock check runs during Windows setup (OOBE).' };
+      }
+      if (mode === 'audit') {
+        return { state: 'na', reason: 'Audit mode: the lock check is only proven during Windows setup (OOBE). Run it from the setup screens (Shift+F10) for a result you can trust.' };
+      }
+      if (mode === 'windows') {
+        return { state: 'na', reason: 'Windows setup is already finished. Run this check during Windows setup (OOBE, Shift+F10), when the unit asks Microsoft for its Autopilot profile.' };
+      }
+      return { state: 'na', reason: 'Run this check during Windows setup (OOBE, Shift+F10).' };
+    }
     case 'drives': {
       // Only trust "no drive" if the disk scan itself worked (a timed-out
       // probe also gives an empty list).

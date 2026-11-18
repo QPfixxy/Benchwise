@@ -88,6 +88,23 @@ export default {
         el(
           'section',
           { class: 'card' },
+          el('h2', {}, 'MDM / Autopilot (Windows setup)'),
+          field(
+            'Known tenants file',
+            input('knownTenantsFile', { placeholder: `Default: ${ctx.state.settings.dataDir}/KnownTenants.txt`, spellcheck: 'false' }),
+            'One "TenantId=Client name" per line, e.g. on your intake share. It names the client on a locked unit. This is client data: keep it on the share or the stick.',
+          ),
+          el(
+            'label',
+            { class: 'check' },
+            el('input', { type: 'checkbox', checked: s.mdmLockedFails !== false, onchange: (e) => (s.mdmLockedFails = e.target.checked) }),
+            'A locked unit fails the audit',
+          ),
+          el('p', { class: 'muted small' }, 'Turn off to only record locks without failing the unit.'),
+        ),
+        el(
+          'section',
+          { class: 'card' },
           el('h2', {}, 'Tests'),
           el('p', { class: 'muted small' }, 'Disable tests that never apply at this station (e.g. touchscreen on a desktop bench).'),
           TESTS.map((t) =>

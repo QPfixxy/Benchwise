@@ -14,6 +14,7 @@ const { isElevated, ensureLinuxElevation } = require('./elevation');
 
 const { collectHardware } = require('./hardware/collect');
 const { checkDrives } = require('./drives/smartctl');
+const { runMdmCheck, loadKnownTenants, mdmVerdict } = require('./intake/mdm');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
 const { Settings, resolveDataDir } = require('./settings');
 const { ReportStore, buildAudit } = require('./reports/store');
@@ -59,6 +60,8 @@ let hardwarePromise = null;
 let keyboardCapture = false;
 let stress = null;
 let lastDriveHealth = null;
+let lastMdm = null;
+let mdmPromise = null;
 let drivePromise = null;
 
 /** Drive Health test: one check at a time; the latest result goes into the saved report. */
@@ -179,6 +182,22 @@ function registerIpc() {
   handle('app:info', async () => ({ ...appInfo(), elevated: await isElevated() }));
   handle('hardware:collect', (force) => getHardware(Boolean(force)));
   handle('drives:check', () => getDriveHealth());
+  // MDM / Autopilot check (~30 s+). One run at a time; progress streams to the UI.
+  handle('mdm:run', () => {
+    if (!mdmPromise) {
+      mdmPromise = (async () => {
+        const s = settings.get();
+        const known = await loadKnownTenants([s.knownTenantsFile, path.join(settings.dataDir, 'KnownTenants.txt')]);
+        const result = await runMdmCheck({
+          known: known.map,
+          onProgress: (p) => mainWindow?.webContents.send('mdm:progress', p),
+        });
+        const verdict = mdmVerdict(result, { lockedFails: s.mdmLockedFails });
+        return (lastMdm = { ...result, verdict, knownTenantsSource: known.source ? path.basename(known.source) : null });
+      })().finally(() => (mdmPromise = null));
+    }
+    return mdmPromise;
+  });
   // USB port test (test drive)
   const ports = new PortWatcher();
   handle('ports:start', () => ports.start());
@@ -209,7 +228,7 @@ function registerIpc() {
 
   handle('audit:save', async (input) => {
     const hw = lastHardware || (await getHardware());
-    const hardware = lastDriveHealth ? { ...hw, driveHealth: lastDriveHealth } : hw;
+    const hardware = { ...hw, ...(lastDriveHealth && { driveHealth: lastDriveHealth }), ...(lastMdm && { intake: { mdm: lastMdm } }) };
     const audit = buildAudit({ input: input || {}, hardware, settings: settings.get(), app: appInfo() });
     const saved = await store.save(audit);
     return { ...saved, overall: audit.overall, id: audit.id };
@@ -399,11 +418,16 @@ async function runUiCheck() {
     ['Display', '3-display'],
     ['Touchscreen', '3b-touch'],
     ['USB Ports', '4-ports'],
+    ['MDM / Autopilot', '0-mdm'],
     ['Drive Health', '4b-drives'],
     ['Finish', '5-finish'],
   ]) {
     await click(label);
     await wait(name === '4-ports' ? 3000 : 600);
+    if (label === 'MDM / Autopilot') {
+      // Only runs when Benchwise is in OOBE (or BENCHWISE_ENV_MODE=oobe): wait for the result.
+      for (let i = 0; i < 120 && (await js(`!!document.querySelector('.mdm-check .spinner')`)); i++) await wait(500);
+    }
     if (label === 'Drive Health') {
       // CI VMs have virtual disks only, so this is often auto-N/A.
       await js(`[...document.querySelectorAll('button')].find(b => b.textContent === 'Run this test anyway')?.click()`);

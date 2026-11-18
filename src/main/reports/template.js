@@ -18,6 +18,7 @@ const show = (v) => (v === null || v === undefined || v === '' ? '<span class="n
 const STATUS_LABEL = { pass: 'PASS', fail: 'FAIL', na: 'N/A', untested: 'NOT TESTED', incomplete: 'INCOMPLETE' };
 
 const TEST_NAMES = {
+  mdm: 'MDM / Autopilot',
   camera: 'Camera',
   microphone: 'Microphone',
   speakers: 'Speakers',

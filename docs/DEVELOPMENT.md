@@ -25,6 +25,8 @@ CI runs all three on Windows, macOS and Linux and uploads the reports and screen
 
 **Drive health locally:** run `npm run vendor:smartctl` once. It downloads smartmontools 7.5 (checksum-pinned), builds or extracts `smartctl` for your OS, and puts it in `vendor/smartctl/` (git-ignored). Without it, Benchwise uses a system copy (e.g. `brew install smartmontools`) or shows "tool not found". CI and release runs do this step automatically.
 
+To try the Windows-setup-only tests elsewhere, set `BENCHWISE_ENV_MODE=oobe` (also `audit`, `windows`, `live`…); the scan records it as an override.
+
 To check behaviour as another unit type, set `BENCHWISE_FORM_FACTOR` (e.g. `desktop`). To keep test runs out of your real settings and reports, set `BENCHWISE_DATA_DIR`.
 
 ## Architecture
@@ -54,6 +56,10 @@ src/
     drives/
       smartctl.js         finds and runs smartctl (bundled first), scans and reads each drive
       health.js           pure functions: smartctl JSON -> drive checks -> verdict
+    intake/
+      environment.js      where Benchwise runs: OOBE, audit mode, WinPE, Windows, live USB
+      registry.js         reads the Windows registry with reg.exe
+      mdm.js              MDM / Autopilot lock check (ported from the intake toolkit's v1)
     ports/
       testdrive.js        test-drive prep, read/write benchmark, port watcher, eject
     stress/

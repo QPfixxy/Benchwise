@@ -123,3 +123,15 @@ test('drive health: N/A only when the disk scan worked and found no internal dri
   // A timed-out disk probe (seen on HP firmware) must not hide the test.
   assert.equal(applicability('drives', { hardware: hw([], false) }).state, 'ready');
 });
+
+test('MDM test: offered only during Windows setup (OOBE)', async () => {
+  const [, { applicability }] = await load();
+  const hw = (mode) => ({ system: {}, storage: [], environment: { mode } });
+  assert.equal(applicability('mdm', { hardware: hw('oobe') }).state, 'ready');
+  for (const mode of ['audit', 'windows', 'winpe', 'macos', 'linux', 'live', undefined]) {
+    const a = applicability('mdm', { hardware: hw(mode) });
+    assert.equal(a.state, 'na', String(mode));
+    assert.ok(a.reason, String(mode));
+  }
+  assert.match(applicability('mdm', { hardware: hw('windows') }).reason, /OOBE/);
+});

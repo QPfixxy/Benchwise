@@ -39,6 +39,7 @@ Every N/A can be overridden with **Run this test anyway**. If a unit's firmware 
 | Speakers | Separate left and right tones, a frequency sweep, a music sample, and an output picker |
 | USB Ports | See [USB port test](#usb-port-test) |
 | Drive Health | See [Drive health](#drive-health) |
+| MDM / Autopilot | See [MDM / Autopilot lock check](#mdm--autopilot-lock-check) (Windows setup only) |
 | CPU Stress | Every core runs integer, floating-point, cache and SHA-256 workloads with known answers, and one wrong answer fails the unit. Throughput is tracked in 5-second windows to detect thermal throttling. Temperature and clock are sampled where the OS allows. Profiles: 2, 10 or 30 minutes |
 | Memory Test | Fills 50–80% of free RAM with 7 patterns: stuck bits, coupling, walking ones, address lines and random. Every chunk is written before any is verified, so data really goes through RAM. A mismatch fails with the address and the flipped bits. It's a user-space test: RAM reserved by the OS isn't covered, so use a bootable tester such as MemTest86 on suspect units |
 
@@ -61,6 +62,22 @@ Opening the Drive Health page reads every drive's own health records (SMART) wit
 | **N/A** | The inventory found no internal drive (pulled drive) |
 
 Each drive shows life remaining, power-on time, temperature, data written and power cycles, and all of it goes into the report. USB drives (including the USB test drive) are listed but not counted. If you suspect a drive the scan reports as healthy, a long self-test or a full surface scan is still the thorough check.
+
+### MDM / Autopilot lock check
+
+Checks whether a Windows unit is still registered to an organisation through Autopilot. It only runs during **Windows setup (OOBE)**: open a command prompt with Shift+F10 and start Benchwise from there. Everywhere else the test is N/A, because the answer can't be trusted.
+
+1. **Connection check:** the unit must reach the internet and Microsoft's Autopilot, sign-in and device-registration services. If it can't, the result is **Can't verify** and there's no verdict, because a locked unit could look clean. Fix the network and press **Run check** again.
+2. **Profile check:** for about 30 seconds, Benchwise watches for the Autopilot tenant that Windows downloads during setup.
+
+| Result | Meaning | Verdict |
+|---|---|---|
+| **Clean** | No Autopilot profile | Pass |
+| **Locked** | Registered to a known client, or to a named domain. Send to salvage | Fail (can be changed in Settings) |
+| **Ghost profile** | Only an unknown tenant ID, which isn't always a lock. Go through setup with Wi-Fi and see whether it forces a corporate sign-in | You decide |
+| **Can't verify** | Microsoft wasn't reachable | You decide, after fixing the network |
+
+**Known tenants:** to show the client's name on a locked unit, point Settings at a `KnownTenants.txt` file (one `TenantId=Client name` per line), for example on your intake share. Otherwise Benchwise looks for `KnownTenants.txt` in its data folder (the USB stick in portable mode). It's client data, so keep it out of anything public.
 
 ## Administrator access
 

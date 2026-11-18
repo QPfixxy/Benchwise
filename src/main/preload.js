@@ -8,6 +8,14 @@ contextBridge.exposeInMainWorld('benchwise', {
   appInfo: call('app:info'),
   collectHardware: call('hardware:collect'),
   checkDrives: call('drives:check'),
+  mdm: {
+    run: call('mdm:run'),
+    onProgress: (cb) => {
+      const listener = (_e, p) => cb(p);
+      ipcRenderer.on('mdm:progress', listener);
+      return () => ipcRenderer.removeListener('mdm:progress', listener);
+    },
+  },
   stress: {
     profiles: call('stress:profiles'),
     status: call('stress:status'),

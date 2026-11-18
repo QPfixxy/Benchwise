@@ -7,7 +7,7 @@ const { giveToOwner } = require('./elevation');
 const SETTINGS_FILE = 'benchwise-settings.json';
 const LEGACY_SETTINGS_FILE = 'qudit-settings.json'; // Benchwise was called Qudit before 2.1
 
-const TEST_IDS = ['camera', 'microphone', 'speakers', 'keyboard', 'display', 'touchscreen', 'ports', 'drives', 'cpu', 'memory'];
+const TEST_IDS = ['mdm', 'camera', 'microphone', 'speakers', 'keyboard', 'display', 'touchscreen', 'ports', 'drives', 'cpu', 'memory'];
 
 const DEFAULTS = Object.freeze({
   stationName: '',
@@ -17,6 +17,11 @@ const DEFAULTS = Object.freeze({
   // The original Qudit 1.x format was: \d{7}-\d{7}
   assetTagPattern: '',
   reportsDir: '', // empty = <data dir>/reports
+  // MDM / Autopilot test. KnownTenants.txt is client data: it lives on the
+  // intake share or the stick, never in the app. Empty = <data dir>/KnownTenants.txt.
+  knownTenantsFile: '',
+  // Site policy: does a locked unit fail the audit? (Some sites only record it.)
+  mdmLockedFails: true,
   enabledTests: TEST_IDS.reduce((acc, id) => ({ ...acc, [id]: true }), {}),
 });
 
@@ -115,6 +120,8 @@ function sanitize(v) {
     assetTagLabel: str(v.assetTagLabel, 40) || DEFAULTS.assetTagLabel,
     assetTagPattern: str(v.assetTagPattern, 200),
     reportsDir: str(v.reportsDir, 1024),
+    knownTenantsFile: str(v.knownTenantsFile, 1024),
+    mdmLockedFails: v.mdmLockedFails !== false,
     enabledTests,
   };
 }
