@@ -10,6 +10,8 @@ const store = require('./store');
 const auth = require('./auth');
 const { newKey } = require('./keys');
 const { hashPassword, checkStrength } = require('./passwords');
+const setup = require('./setup');
+const crypto = require('node:crypto');
 const { version } = require('../package.json');
 const yazl = require('yazl');
 const { renderRecordPdf, pdfName } = require('./report');
@@ -131,6 +133,95 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
   if (staff) registerStaff();
   return app;
 
+  // ------------------------------------------------------------ first-run setup wizard
+  // Open only while setup is pending (the installer stores a one-time code);
+  // closed for good once it completes.
+  function registerSetup() {
+    const tokens = new Map(); // hash -> expiry (one server process; setup is a one-off)
+    const codeTries = auth.rateLimiter({ max: 6, windowMs: 15 * 60_000 });
+    const pending = async () => {
+      const st = await setup.getSetting(pool, 'setup');
+      return st && !st.complete ? st : null;
+    };
+    const withToken = async (req) => {
+      if (!(await pending())) fail(409, 'This server is already set up.');
+      const t = String(req.headers['x-setup-token'] || '');
+      const h = crypto.createHash('sha256').update(t).digest('hex');
+      const exp = tokens.get(h);
+      if (!exp || exp < Date.now()) fail(401, 'Enter the setup code again (the setup session expired).');
+    };
+
+    app.get('/api/v1/setup/status', async () => ({ needed: Boolean(await pending()) }));
+
+    app.post('/api/v1/setup/verify', { schema: { body: { type: 'object', required: ['code'], properties: { code: { type: 'string', maxLength: 32 } } } } }, async (req) => {
+      const st = await pending();
+      if (!st) fail(409, 'This server is already set up.');
+      if (codeTries.blocked(req.ip)) fail(429, 'Too many wrong codes; wait 15 minutes.');
+      const a = Buffer.from(setup.hashCode(req.body.code));
+      const b = Buffer.from(String(st.codeHash || ''));
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        codeTries.hit(req.ip);
+        fail(401, "That setup code isn't right. It was printed at the end of the install.");
+      }
+      const token = crypto.randomBytes(32).toString('base64url');
+      tokens.set(crypto.createHash('sha256').update(token).digest('hex'), Date.now() + 30 * 60_000);
+      return { token };
+    });
+
+    app.get('/api/v1/setup/environment', async (req) => {
+      await withToken(req);
+      let fingerprint = null;
+      try {
+        fingerprint = new crypto.X509Certificate(fs.readFileSync(config.certPath)).fingerprint256;
+      } catch {
+        /* not readable here (development) */
+      }
+      return { interfaces: setup.localInterfaces(), timeZones: setup.TIME_ZONES, generatedCertificate: { fingerprint }, twoNetworksNow: Boolean(config.floor) };
+    });
+
+    app.post('/api/v1/setup/apply', { bodyLimit: 512 * 1024, schema: { body: { type: 'object' } } }, async (req) => {
+      await withToken(req);
+      const interfaces = setup.localInterfaces();
+      const { errors, plan } = setup.checkSetup(req.body, { interfaces });
+      if (errors) return { ok: false, errors };
+      const id = crypto.randomUUID();
+      const passwordHash = await hashPassword(plan.admin.password);
+      await tx(pool, async (c) => {
+        const site = await c.query(
+          `INSERT INTO sites (code, name, time_zone) VALUES ($1, $2, $3)
+           ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, time_zone = EXCLUDED.time_zone RETURNING id`,
+          [plan.site.code, plan.site.name, plan.site.timeZone],
+        );
+        try {
+          await c.query("INSERT INTO users (username, password_hash, role, all_sites, origin) VALUES ($1, $2, 'admin', true, 'local')", [plan.admin.username, passwordHash]);
+        } catch (err) {
+          if (err.code === '23505') fail(409, `A user called ${plan.admin.username} already exists.`);
+          throw err;
+        }
+        await setup.setSetting(c, 'site.home', { siteId: site.rows[0].id, code: plan.site.code });
+        await setup.setSetting(c, 'network', plan.network);
+        if (plan.wifi) await setup.setSetting(c, 'sticks.wifi', plan.wifi);
+        await setup.setSetting(c, 'setup', { complete: true, completedAt: new Date().toISOString(), applyId: id });
+        await store.log(c, plan.admin.username, 'setup.complete', { site: plan.site.code, network: plan.network.mode, certificate: plan.certificate.mode, wifi: Boolean(plan.wifi) });
+      });
+      tokens.clear();
+      // Network and certificate need root: hand them to the apply helper.
+      setup.writeApplyRequest(config.requestsDir, { id, network: plan.network, certificate: plan.certificate });
+      const url = `https://${plan.network.mode === 'two' ? plan.network.companyIp : req.hostname.replace(/:\d+$/, '')}/`;
+      return { ok: true, applyId: id, url };
+    });
+
+    // Progress of the root helper; readable after setup too (no secrets in it).
+    app.get('/api/v1/setup/progress', async () => {
+      try {
+        const st = JSON.parse(fs.readFileSync(config.statusFile, 'utf8'));
+        return { state: st.state, message: st.message || null, url: st.url || null, at: st.at };
+      } catch {
+        return { state: 'waiting' };
+      }
+    });
+  }
+
   // ------------------------------------------------------------ floor side: stations
   function registerFloor() {
 
@@ -172,6 +263,7 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
 
   // ------------------------------------------------------------ staff side
   function registerStaff() {
+  registerSetup();
   for (const [route, [file, type]] of Object.entries(STATIC)) {
     const body = fs.readFileSync(path.join(PUBLIC, file));
     app.get(route, async (req, reply) => reply.type(type).header('Cache-Control', 'no-cache').send(body));

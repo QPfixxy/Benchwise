@@ -163,4 +163,9 @@ Upgrades: run the new installer, or approve a version at the Hub and the site se
   - Benchwise's outbox: records only (no PDFs), with fingerprint pinning.
   - Direct HTTPS for Windows.
   - **Compliance PDFs on demand:** one record, or a ZIP batch (date range, site or serial list, up to 5,000 records, logged), drawn from the stored record and never stored.
-- **Next:** Phase A step 2, the browser setup wizard.
+  - **Phase A step 2, the browser setup wizard:**
+    - a one-time setup code;
+    - facility, networks (picked from a list of network cards), certificate, floor Wi-Fi and admin;
+    - network and certificate changes applied by a root-only helper (systemd path unit), which re-validates every request and rolls back if nginx refuses.
+  - Tested by a fresh install on the Ubuntu VM, the wizard clicked through in a browser, and two networks applied and verified from outside.
+- **Next:** Phase A step 3, making USB sticks at the site server.

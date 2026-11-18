@@ -1,0 +1,10 @@
+[Unit]
+Description=Benchwise Server: watch for setup changes to apply
+
+[Path]
+# The web service drops a request here; the root helper applies it.
+PathExists=/var/lib/benchwise-server/requests/apply.json
+Unit=benchwise-server-apply.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=Benchwise Server: apply network/certificate changes from the setup wizard (root helper)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /opt/benchwise-server/src/apply.js

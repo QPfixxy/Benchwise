@@ -7,6 +7,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const URL_ = process.env.BW_TEST_DATABASE_URL;
 const skip = !URL_ && 'set BW_TEST_DATABASE_URL to run';
@@ -35,7 +38,8 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
   // Fresh schema every run.
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  const config = { secureCookies: false, sessionHours: 12, maxUploadMb: 5, trustProxy: false };
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'bw-setup-'));
+  const config = { secureCookies: false, sessionHours: 12, maxUploadMb: 5, trustProxy: false, requestsDir: path.join(work, 'requests'), statusFile: path.join(work, 'status.json'), certPath: path.join(work, 'none.crt') };
   const app = buildApp({ pool, config, logger: false });
 
   const [dal, phx] = (await pool.query("INSERT INTO sites (code, name) VALUES ('DAL', 'Dallas'), ('PHX', 'Phoenix') RETURNING id")).rows.map((r) => r.id);
@@ -208,6 +212,40 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     const v = await verifyChain(pool, ok, { batch: 2 });
     assert.equal(v.ok, false);
     assert.equal(v.reason, 'record changed');
+  });
+
+  await t.test('setup wizard: code, then one-shot apply; closed for good afterwards', async () => {
+    const setup = require('../src/setup');
+    assert.equal((await app.inject({ url: '/api/v1/setup/status' })).json().needed, false, 'no pending setup: wizard closed');
+    const code = setup.newSetupCode();
+    await setup.setSetting(pool, 'setup', { complete: false, codeHash: setup.hashCode(code) });
+    assert.equal((await app.inject({ url: '/api/v1/setup/status' })).json().needed, true);
+    const hdr = { 'x-benchwise': '1' };
+    assert.equal((await app.inject({ method: 'POST', url: '/api/v1/setup/verify', headers: hdr, payload: { code: 'WRONG-CODE1' } })).statusCode, 401);
+    assert.equal((await app.inject({ url: '/api/v1/setup/environment' })).statusCode, 401, 'no token');
+    const { token } = (await app.inject({ method: 'POST', url: '/api/v1/setup/verify', headers: hdr, payload: { code: code.toLowerCase() } })).json();
+    const env = (await app.inject({ url: '/api/v1/setup/environment', headers: { 'x-setup-token': token } })).json();
+    assert.ok(Array.isArray(env.interfaces) && env.timeZones.includes('America/Chicago'));
+
+    const body = { site: { code: 'aus', name: 'Austin', timeZone: 'America/Chicago' }, network: { mode: 'one' }, certificate: { mode: 'generated' }, wifi: { ssid: 'FLOOR', password: 'floor-pass-123' }, admin: { username: 'alice', password: 'a long enough passphrase', confirm: 'nope' } };
+    const bad = (await app.inject({ method: 'POST', url: '/api/v1/setup/apply', headers: { ...hdr, 'x-setup-token': token }, payload: body })).json();
+    assert.equal(bad.ok, false);
+    assert.match(bad.errors.join(), /don't match/);
+    body.admin.confirm = body.admin.password;
+    const ok = (await app.inject({ method: 'POST', url: '/api/v1/setup/apply', headers: { ...hdr, 'x-setup-token': token }, payload: body })).json();
+    assert.equal(ok.ok, true);
+    const req = JSON.parse(fs.readFileSync(path.join(config.requestsDir, 'apply.json'), 'utf8'));
+    assert.deepEqual([req.id, req.network, req.certificate], [ok.applyId, { mode: 'one' }, { mode: 'generated' }]);
+    assert.ok(!JSON.stringify(req).includes('passphrase'), 'the root helper never gets the admin password');
+    assert.equal((await pool.query("SELECT role FROM users WHERE username = 'alice'")).rows[0].role, 'admin');
+    assert.equal((await pool.query("SELECT name FROM sites WHERE code = 'AUS'")).rows[0].name, 'Austin');
+    assert.deepEqual(await setup.getSetting(pool, 'sticks.wifi'), { ssid: 'FLOOR', password: 'floor-pass-123' });
+
+    assert.equal((await app.inject({ url: '/api/v1/setup/status' })).json().needed, false);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/v1/setup/verify', headers: hdr, payload: { code } })).statusCode, 409, 'the code is spent');
+    assert.equal((await app.inject({ url: '/api/v1/setup/environment', headers: { 'x-setup-token': token } })).statusCode, 409);
+    fs.writeFileSync(config.statusFile, JSON.stringify({ id: ok.applyId, state: 'done', url: 'https://10.0.0.1/', at: 'now' }));
+    assert.equal((await app.inject({ url: '/api/v1/setup/progress' })).json().state, 'done');
   });
 
   await t.test('security headers and health', async () => {

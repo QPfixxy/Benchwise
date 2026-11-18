@@ -80,8 +80,9 @@ echo "Node $(node -v), $(psql --version), $(nginx -v 2>&1)"
 say "Service account and folders"
 id "$SVC_USER" >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /usr/sbin/nologin "$SVC_USER"
 install -d -m 0750 -o root -g "$SVC_USER" "$ETC"
-install -d -m 0700 -o root -g root "$ETC/tls"
+install -d -m 0755 -o root -g root "$ETC/tls"
 install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$DATA"
+install -d -m 0700 -o "$SVC_USER" -g "$SVC_USER" "$DATA/requests"
 install -d -m 0700 -o postgres -g postgres "$BACKUPS"
 
 # ------------------------------------------------------------------ database
@@ -151,6 +152,8 @@ say "Application"
 rm -rf "$APP.new"
 install -d -m 0755 "$APP.new"
 cp -a "$SRC/src" "$SRC/public" "$SRC/package.json" "$SRC/package-lock.json" "$APP.new/"
+install -d -m 0755 "$APP.new/deploy"
+cp "$SRC/deploy/nginx.conf" "$SRC/deploy/nginx-two-networks.conf" "$APP.new/deploy/"
 (cd "$APP.new" && npm ci --omit=dev --no-audit --no-fund --loglevel=error)
 chown -R root:root "$APP.new"
 rm -rf "$APP.old"
@@ -206,8 +209,11 @@ ln -sf /etc/nginx/sites-available/benchwise-server /etc/nginx/sites-enabled/benc
 rm -f /etc/nginx/sites-enabled/default
 nginx -t -q
 install -m 0644 "$SRC/deploy/benchwise-server.service" /etc/systemd/system/benchwise-server.service
+install -m 0644 "$SRC/deploy/benchwise-server-apply.service" /etc/systemd/system/benchwise-server-apply.service
+install -m 0644 "$SRC/deploy/benchwise-server-apply.path" /etc/systemd/system/benchwise-server-apply.path
 systemctl daemon-reload
 systemctl enable -q benchwise-server nginx
+systemctl enable -q --now benchwise-server-apply.path
 systemctl restart benchwise-server
 # Restart (not reload): the addresses nginx listens on may have changed.
 systemctl restart nginx
@@ -236,21 +242,22 @@ done
 curl -fsk "https://${COMPANY_IP:-127.0.0.1}/healthz" || die "The service did not start: journalctl -u benchwise-server -n 50"
 echo
 
-ADMIN_MSG="Administrator account already exists."
+# First install: no accounts yet, so finish in the browser with a one-time code.
+SETUP_MSG="Already set up: sign in with your administrator account."
 if [ "$(sudo -u postgres psql -d "$DB" -tAc 'SELECT count(*) FROM users')" = 0 ]; then
-  ADMIN_MSG=$(benchwise-server create-admin admin)
+  CODE=$(benchwise-server setup-code)
+  SETUP_MSG="Finish setup in a browser (facility, networks, certificate, admin):
+                open the address above and enter the setup code  $CODE"
 fi
 
 say "Benchwise Server is running"
 cat <<EOF
 
   Web:          https://${COMPANY_IP:-$(hostname -I | awk '{print $1}')}/
-  $ADMIN_MSG
+  $SETUP_MSG
 
   Certificate SHA-256 fingerprint (for stations: BENCHWISE_SERVER_FINGERPRINT):
     $FINGERPRINT
 
-  Next:  sudo benchwise-server create-site DAL "Dallas"
-         sudo benchwise-server create-station DAL "Bench 1"
   Logs:  journalctl -u benchwise-server -f
 EOF

@@ -12,10 +12,16 @@ cd Benchwise/hub
 sudo ./deploy/install.sh
 ```
 
-The installer sets up PostgreSQL, nginx (HTTPS) and Node.js 22, creates the database and a sandboxed service account, and starts the service. It prints:
-- the web address;
-- the first administrator's password, shown **once**;
-- the certificate fingerprint that stations use to trust a self-signed certificate.
+The installer sets up PostgreSQL, nginx (HTTPS) and Node.js 22, creates the database and a sandboxed service account, and starts the service. It prints the web address, a **one-time setup code**, and the certificate fingerprint that stations use to trust a self-signed certificate.
+
+**Then finish in a browser.** Open the address from any PC and enter the setup code. The wizard asks for:
+1. the facility code, name and time zone;
+2. **one network or two**: pick the network cards from a list;
+3. the certificate: the generated one, or your company's (paste or upload PEM);
+4. the floor Wi-Fi for the USB sticks this server makes;
+5. the first administrator account.
+
+Network and certificate changes are applied by a small root-only helper (`benchwise-server-apply`), because the web service itself runs unprivileged. The wizard closes for good once setup is complete.
 
 To upgrade, pull the new version and run the same command again. Passwords, certificates and data are kept.
 

@@ -29,6 +29,11 @@ function loadConfig(env = process.env) {
     tlsKey: env.BW_TLS_KEY || null,
     // With direct HTTPS: also listen on this port and redirect to HTTPS.
     httpRedirectPort: Number(env.BW_HTTP_REDIRECT_PORT) || null,
+    // Setup wizard: where the root helper picks up requests and reports back,
+    // and the certificate whose fingerprint the wizard shows.
+    requestsDir: env.BW_REQUESTS_DIR || '/var/lib/benchwise-server/requests',
+    statusFile: env.BW_STATUS_FILE || '/var/lib/benchwise-server/apply-status.json',
+    certPath: env.BW_CERT_PATH || '/etc/benchwise-server/tls/server.crt',
     sessionHours: Math.min(Math.max(Number(env.BW_SESSION_HOURS) || 12, 1), 168),
     maxUploadMb: Math.min(Math.max(Number(env.BW_MAX_UPLOAD_MB) || 5, 1), 50),
   };

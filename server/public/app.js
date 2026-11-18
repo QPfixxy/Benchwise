@@ -263,6 +263,200 @@ async function adminPage(view) {
   );
 }
 
+// ------------------------------------------------------------------ first-run setup wizard
+
+let setupNeeded = null;
+
+async function setupApi(path, { method = 'GET', body, token } = {}) {
+  const res = await fetch(`/api/v1/setup${path}`, {
+    method,
+    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(token ? { 'x-setup-token': token } : {}), ...(method !== 'GET' ? { 'x-benchwise': '1' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function setupPage(view) {
+  const s = {
+    step: 0,
+    token: null,
+    env: null,
+    site: { code: '', name: '', timeZone: 'America/Chicago' },
+    network: { mode: 'one', companyIp: '', floorIp: '' },
+    certificate: { mode: 'generated', certPem: '', keyPem: '' },
+    wifi: { ssid: '', password: '' },
+    admin: { username: 'admin', password: '', confirm: '' },
+  };
+  const STEPS = ['Setup code', 'Facility', 'Networks', 'Certificate', 'Sticks', 'Administrator', 'Review'];
+  const err = el('div', {});
+  const showErrors = (list) => fill(err, list.length ? el('div', { class: 'card errors' }, el('strong', {}, 'Please fix:'), el('ul', {}, list.map((e) => el('li', {}, e)))) : null);
+  const bind = (obj, key, props = {}) => el('input', { value: obj[key], oninput: (e) => (obj[key] = e.target.value), ...props });
+  const field = (label, control, help) => el('label', { class: 'field' }, el('span', {}, label), control, help ? el('small', { class: 'muted' }, help) : null);
+  const ifaceLabel = (i) => `${i.name} — ${i.address}${i.cidr ? ` (${i.cidr})` : ''}`;
+
+  const pages = [
+    // 0 setup code
+    () => {
+      const code = el('input', { placeholder: 'XXXXX-XXXXX', autocomplete: 'off', spellcheck: 'false', size: 14, class: 'code' });
+      setTimeout(() => code.focus());
+      return {
+        body: [el('p', {}, 'Welcome. This server is new: set it up in a few steps. Enter the setup code printed at the end of the install.'), field('Setup code', code)],
+        next: async () => {
+          s.token = (await setupApi('/verify', { method: 'POST', body: { code: code.value } })).token;
+          s.env = await setupApi('/environment', { token: s.token });
+          const ifs = s.env.interfaces;
+          s.network.companyIp = ifs[0]?.address || '';
+          s.network.floorIp = ifs[1]?.address || '';
+        },
+      };
+    },
+    // 1 facility
+    () => ({
+      body: [
+        field('Facility code', bind(s.site, 'code', { placeholder: 'e.g. DAL', size: 10, maxlength: 16 }), 'Short and unique across your facilities: it appears in every record.'),
+        field('Facility name', bind(s.site, 'name', { placeholder: 'e.g. Dallas warehouse', size: 40 })),
+        field('Time zone', el('select', { onchange: (e) => (s.site.timeZone = e.target.value) }, s.env.timeZones.map((tz) => el('option', { value: tz, selected: tz === s.site.timeZone }, tz.replace(/_/g, ' '))))),
+      ],
+      check: () => [!/^[A-Za-z0-9][A-Za-z0-9-]{1,15}$/.test(s.site.code) && 'Facility code: 2-16 letters, digits or dashes.', !s.site.name.trim() && 'Facility name is required.'].filter(Boolean),
+    }),
+    // 2 networks
+    () => {
+      const ifs = s.env.interfaces;
+      const choice = (mode, title, text) =>
+        el('label', { class: `choice${s.network.mode === mode ? ' active' : ''}` }, el('input', { type: 'radio', name: 'netmode', checked: s.network.mode === mode, onchange: () => ((s.network.mode = mode), render()) }), el('div', {}, el('strong', {}, title), el('p', { class: 'muted small' }, text)));
+      const pick = (key, label) => field(label, el('select', { onchange: (e) => (s.network[key] = e.target.value) }, ifs.map((i) => el('option', { value: i.address, selected: s.network[key] === i.address }, ifaceLabel(i)))));
+      return {
+        body: [
+          choice('one', 'One network', 'Benches, sticks and staff all reach this server on the same network (e.g. installed directly on an existing warehouse network).'),
+          choice('two', 'Two networks (recommended when available)', 'Like your current server: a company side for staff and the Hub, and a floor side for the units under test. Nothing is routed between them.'),
+          s.network.mode === 'two'
+            ? ifs.length < 2
+              ? el('p', { class: 'badge fail' }, `This server has only ${ifs.length} network address. Add a second network card for two networks.`)
+              : el('div', { class: 'cards' }, el('div', {}, pick('companyIp', 'Company side (staff)')), el('div', {}, pick('floorIp', 'Floor side (benches and sticks)')))
+            : el('p', { class: 'muted small' }, `Addresses on this server: ${ifs.map((i) => i.address).join(', ') || 'none found'}`),
+        ],
+        check: () => (s.network.mode === 'two' ? [ifs.length < 2 && 'Two networks need two network cards.', s.network.companyIp === s.network.floorIp && 'Choose different cards for the company and floor sides.'].filter(Boolean) : []),
+      };
+    },
+    // 3 certificate
+    () => {
+      const choice = (mode, title, text) =>
+        el('label', { class: `choice${s.certificate.mode === mode ? ' active' : ''}` }, el('input', { type: 'radio', name: 'certmode', checked: s.certificate.mode === mode, onchange: () => ((s.certificate.mode = mode), render()) }), el('div', {}, el('strong', {}, title), el('p', { class: 'muted small' }, text)));
+      const fileInto = (key) => el('input', { type: 'file', accept: '.pem,.crt,.cer,.key,.txt', onchange: async (e) => { s.certificate[key] = await e.target.files[0].text(); render(); } });
+      return {
+        body: [
+          choice('generated', 'Use the certificate made by the installer', `Fine for most sites. Sticks trust it by its fingerprint: ${s.env.generatedCertificate.fingerprint || '(shown after setup)'}`),
+          choice('upload', "Use our company's certificate", "If your IT issues internal certificates. Benches and PCs already trust it, so no fingerprint is needed."),
+          s.certificate.mode === 'upload'
+            ? el('div', {},
+                field('Certificate (PEM)', el('div', {}, fileInto('certPem'), el('textarea', { rows: 4, cols: 70, value: s.certificate.certPem, placeholder: '-----BEGIN CERTIFICATE-----', oninput: (e) => (s.certificate.certPem = e.target.value) }))),
+                field('Private key (PEM, no password)', el('div', {}, fileInto('keyPem'), el('textarea', { rows: 4, cols: 70, value: s.certificate.keyPem, placeholder: '-----BEGIN PRIVATE KEY-----', oninput: (e) => (s.certificate.keyPem = e.target.value) }))))
+            : null,
+        ],
+        check: () => (s.certificate.mode === 'upload' ? [!s.certificate.certPem.includes('-----BEGIN') && 'Add the certificate.', !s.certificate.keyPem.includes('-----BEGIN') && 'Add the private key.'].filter(Boolean) : []),
+      };
+    },
+    // 4 sticks (floor Wi-Fi)
+    () => ({
+      body: [
+        el('p', {}, 'USB sticks made by this server join this Wi-Fi on the floor (units need internet for the MDM check). Leave empty if the floor is wired only; you can set it later.'),
+        field('Floor Wi-Fi name (SSID)', bind(s.wifi, 'ssid', { size: 32, maxlength: 32, autocomplete: 'off' })),
+        field('Wi-Fi password', bind(s.wifi, 'password', { type: 'password', size: 32, maxlength: 63, autocomplete: 'new-password' }), 'Stored on this server and written onto the sticks it makes.'),
+      ],
+      check: () => (s.wifi.ssid && s.wifi.password && s.wifi.password.length < 8 ? ['Wi-Fi password: at least 8 characters (or empty for an open network).'] : []),
+    }),
+    // 5 administrator
+    () => ({
+      body: [
+        el('p', {}, 'The first administrator account for this server.'),
+        field('Username', bind(s.admin, 'username', { autocomplete: 'username', size: 20 })),
+        field('Password', bind(s.admin, 'password', { type: 'password', autocomplete: 'new-password', size: 28 }), 'At least 12 characters.'),
+        field('Password again', bind(s.admin, 'confirm', { type: 'password', autocomplete: 'new-password', size: 28 })),
+      ],
+      check: () => [!/^[a-z0-9._-]{3,40}$/.test(s.admin.username) && 'Username: 3-40 lowercase letters, digits, dot, dash or underscore.', s.admin.password.length < 12 && 'Password: at least 12 characters.', s.admin.password !== s.admin.confirm && "The passwords don't match."].filter(Boolean),
+    }),
+    // 6 review
+    () => ({
+      body: [
+        el('p', {}, 'Check and apply. If the networks change, the server restarts and moves to its new address; this page will tell you where.'),
+        el('dl', { class: 'kv' },
+          el('dt', {}, 'Facility'), el('dd', {}, `${s.site.code.toUpperCase()} · ${s.site.name} · ${s.site.timeZone}`),
+          el('dt', {}, 'Networks'), el('dd', {}, s.network.mode === 'two' ? `Two: staff on ${s.network.companyIp}, floor on ${s.network.floorIp}` : 'One network'),
+          el('dt', {}, 'Certificate'), el('dd', {}, s.certificate.mode === 'upload' ? 'Company certificate' : 'Made by the installer'),
+          el('dt', {}, 'Sticks Wi-Fi'), el('dd', {}, s.wifi.ssid ? s.wifi.ssid : 'Not set (wired floor)'),
+          el('dt', {}, 'Administrator'), el('dd', {}, s.admin.username)),
+      ],
+      nextLabel: 'Apply',
+      next: async () => {
+        const r = await setupApi('/apply', { method: 'POST', token: s.token, body: { site: s.site, network: s.network, certificate: s.certificate, wifi: s.wifi.ssid ? s.wifi : null, admin: s.admin } });
+        if (!r.ok) throw Object.assign(new Error('Some settings need fixing.'), { list: r.errors });
+        finish(r);
+        return 'stop';
+      },
+    }),
+  ];
+
+  function finish(r) {
+    const status = el('p', {}, 'Applying network and certificate settings…');
+    fill(view, el('div', { class: 'card wizard' }, el('h1', {}, 'Setting up…'), status));
+    const started = Date.now();
+    const poll = async () => {
+      let p = null;
+      try {
+        p = await setupApi('/progress');
+      } catch {
+        /* the server may be restarting */
+      }
+      if (p?.state === 'done') {
+        setupNeeded = false;
+        return fill(view, el('div', { class: 'card wizard' }, el('h1', {}, 'This server is ready'), el('p', {}, 'Sign in with the administrator account you just created.'), el('a', { class: 'btn primary', href: `${r.url}#/login` }, `Go to ${r.url}`)));
+      }
+      if (Date.now() - started > 60000) {
+        // E.g. the networks changed and this page's address is now the floor side.
+        return fill(status, el('p', {}, 'This is taking longer than expected, or the server has moved to its new address.'), el('a', { class: 'btn primary', href: `${r.url}#/login` }, `Try ${r.url}`));
+      }
+      if (p?.state === 'failed') return fill(status, el('span', { class: 'badge fail' }, `Network/certificate settings weren't applied: ${p.message}`), el('p', { class: 'small' }, 'Your facility and administrator are saved. Fix the issue, then set the networks by re-running the installer (sudo ./deploy/install.sh --one-network, or --company-ip … --floor-ip …).'));
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 1500);
+  }
+
+  function render() {
+    const page = pages[s.step]();
+    const back = s.step > 0 ? el('button', { class: 'btn', onclick: () => ((s.step -= 1), showErrors([]), render()) }, 'Back') : null;
+    const next = el('button', { class: 'btn primary', onclick: async () => {
+      const problems = page.check ? page.check() : [];
+      if (problems.length) return showErrors(problems);
+      next.disabled = true;
+      try {
+        const r = page.next ? await page.next() : null;
+        if (r === 'stop') return;
+        s.step += 1;
+        showErrors([]);
+        render();
+      } catch (x) {
+        showErrors(x.list || [x.message]);
+        next.disabled = false;
+      }
+    } }, page.nextLabel || 'Next');
+    fill(
+      view,
+      el(
+        'div',
+        { class: 'card wizard' },
+        el('div', { class: 'steps' }, STEPS.map((t, i) => el('span', { class: i === s.step ? 'active' : i < s.step ? 'done' : '' }, `${i + 1}. ${t}`))),
+        el('h1', {}, STEPS[s.step]),
+        page.body,
+        err,
+        el('div', { class: 'row' }, back, next),
+      ),
+    );
+  }
+  render();
+}
+
 // ------------------------------------------------------------------ shell
 
 function renderChrome(route) {
@@ -297,6 +491,12 @@ function renderChrome(route) {
 async function route() {
   const view = $('view');
   const [path, query = ''] = location.hash.replace(/^#/, '').split('?');
+  // A brand-new server: the setup wizard comes first (no accounts exist yet).
+  if (setupNeeded === null) setupNeeded = await setupApi('/status').then((x) => x.needed).catch(() => false);
+  if (setupNeeded) {
+    renderChrome('setup');
+    return setupPage(view);
+  }
   if (!me && path !== '/login') {
     try {
       me = await api('/me');

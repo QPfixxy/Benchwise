@@ -17,6 +17,7 @@ const { createPool, migrate } = require('./db');
 const { newKey } = require('./keys');
 const { hashPassword } = require('./passwords');
 const { verifyChain, log } = require('./store');
+const { newSetupCode, hashCode, getSetting, setSetting } = require('./setup');
 
 const USAGE = `Usage: benchwise-server <command>
   migrate                         apply database migrations (as the schema owner)
@@ -24,7 +25,8 @@ const USAGE = `Usage: benchwise-server <command>
   create-site <CODE> <name>       add a facility (CODE: 2-16 letters, digits, dashes)
   create-station <CODE> <name>    enroll a station at a site; prints its key once
   verify <CODE>                   check a site's tamper-evidence chain
-  maintain                        daily upkeep: future yearly record partitions, expired sign-ins`;
+  maintain                        daily upkeep: future yearly record partitions, expired sign-ins
+  setup-code                      (re)issue the one-time code for the browser setup wizard`;
 
 async function main([cmd, ...args]) {
   if (cmd === 'maintain') {
@@ -77,6 +79,14 @@ async function main([cmd, ...args]) {
         await pool.query('INSERT INTO stations (site_id, name, key_prefix, key_hash) VALUES ($1, $2, $3, $4)', [site.id, name.join(' '), prefix, hash]);
         await log(pool, 'cli', 'station.create', { site: site.code, name: name.join(' '), keyPrefix: prefix });
         console.log(`Station "${name.join(' ')}" enrolled at ${site.code}.\nKey (shown once): ${key}`);
+        break;
+      }
+      case 'setup-code': {
+        const st = await getSetting(pool, 'setup');
+        if (st?.complete) throw new Error('This server is already set up (Administration covers later changes).');
+        const code = newSetupCode();
+        await setSetting(pool, 'setup', { complete: false, codeHash: hashCode(code), issuedAt: new Date().toISOString() });
+        console.log(code);
         break;
       }
       case 'verify': {
