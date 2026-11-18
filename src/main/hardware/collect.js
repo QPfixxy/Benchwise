@@ -7,6 +7,7 @@ const { execFile } = require('node:child_process');
 const { Worker } = require('node:worker_threads');
 const n = require('./normalize');
 const { detectEnvironment } = require('../intake/environment');
+const { collectSecurity } = require('../intake/security');
 
 const PROBE_TIMEOUT_MS = 25000;
 const CONCURRENCY = 6;
@@ -320,7 +321,7 @@ async function collectHardware() {
       netWarnings.push(`network: ${err.message}`);
       return [];
     });
-  const [{ raw, warnings, timings }, network, environment] = await Promise.all([
+  const [{ raw, warnings, timings }, network, environment, security] = await Promise.all([
     PROBE_MODE === 'batch' ? runProbesBatched(PROBES) : runProbes(PROBES),
     withTimeout(collectNetwork(siNetwork), PROBE_TIMEOUT_MS + 5000, 'network').catch((err) => {
       netWarnings.push(err.message);
@@ -328,6 +329,8 @@ async function collectHardware() {
     }),
     // Where we're running (OOBE, audit mode, live USB...): a few registry reads.
     withTimeout(detectEnvironment(), 10000, 'environment').catch((err) => ({ mode: 'unknown', error: err.message })),
+    // Windows: TPM, Secure Boot, BitLocker (built-in tools, no PowerShell).
+    withTimeout(collectSecurity(), 20000, 'security').catch(() => null),
   ]);
   warnings.push(...netWarnings);
   timings.network = { ms: Date.now() - netStarted, ok: netWarnings.length === 0 };
@@ -388,6 +391,7 @@ async function collectHardware() {
     host: { hostname: os.hostname(), uptimeSeconds: Math.round(os.uptime()) },
     capabilities: { lidClosed: await lidClosed() },
     environment,
+    security,
     // How long each probe took. Saved with the report so a slow or
     // incomplete scan on an unusual model can be diagnosed afterwards.
     diagnostics: { probes: timings, mode: PROBE_MODE, concurrency: PROBE_MODE === 'pool' ? CONCURRENCY : 1, timeoutMs: PROBE_TIMEOUT_MS },

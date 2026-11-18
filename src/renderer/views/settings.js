@@ -88,7 +88,7 @@ export default {
         el(
           'section',
           { class: 'card' },
-          el('h2', {}, 'MDM / Autopilot (Windows setup)'),
+          el('h2', {}, 'Intake checks (Windows setup)'),
           field(
             'Known tenants file',
             input('knownTenantsFile', { placeholder: `Default: ${ctx.state.settings.dataDir}/KnownTenants.txt`, spellcheck: 'false' }),
@@ -101,6 +101,13 @@ export default {
             'A locked unit fails the audit',
           ),
           el('p', { class: 'muted small' }, 'Turn off to only record locks without failing the unit.'),
+          el(
+            'label',
+            { class: 'check' },
+            el('input', { type: 'checkbox', checked: s.malwareFails === true, onchange: (e) => (s.malwareFails = e.target.checked) }),
+            'Malware found fails the audit',
+          ),
+          el('p', { class: 'muted small' }, 'Off: threats are documented in the report but the unit passes this test (it gets wiped and reinstalled anyway).'),
         ),
         el(
           'section',

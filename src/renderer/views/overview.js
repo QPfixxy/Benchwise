@@ -12,6 +12,18 @@ function unitType(sys) {
 
 const join = (...xs) => xs.filter(Boolean).join(' · ');
 
+/** TPM / Secure Boot / BitLocker rows (Windows only). */
+function securityRows(sec) {
+  if (!sec) return [];
+  const tpm = sec.tpm;
+  const bl = sec.bitLocker;
+  return [
+    ['TPM', tpm ? (tpm.present ? join(tpm.version && `TPM ${tpm.version}`, tpm.manufacturer) || 'Present' : 'Not present') : null],
+    ['Secure Boot', { enabled: 'On', disabled: 'Off', unsupported: 'Not supported (legacy BIOS)' }[sec.secureBoot] || null],
+    ['BitLocker', bl ? join(bl.conversion, bl.protection) : null],
+  ];
+}
+
 function card(title, ...body) {
   return el('section', { class: 'card' }, el('h2', {}, title), ...body);
 }
@@ -45,6 +57,7 @@ function render(hw, media) {
           ['BIOS', join(sys.bios?.vendor, sys.bios?.version, sys.bios?.releaseDate)],
           ['OS', join(sys.os?.distro, sys.os?.release, sys.os?.arch)],
           ['Virtual machine', sys.virtual ? 'Yes' : null],
+          ...securityRows(hw.security),
         ]),
       ),
       card(

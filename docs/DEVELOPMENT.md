@@ -60,6 +60,8 @@ src/
       environment.js      where Benchwise runs: OOBE, audit mode, WinPE, Windows, live USB
       registry.js         reads the Windows registry with reg.exe
       mdm.js              MDM / Autopilot lock check (ported from the intake toolkit's v1)
+      defender.js         Defender scan: update, audit mode, quick scan (one PowerShell run, JSON lines)
+      security.js         TPM, Secure Boot, BitLocker via tpmtool / reg / manage-bde
     ports/
       testdrive.js        test-drive prep, read/write benchmark, port watcher, eject
     stress/

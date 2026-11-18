@@ -15,6 +15,7 @@ const { isElevated, ensureLinuxElevation } = require('./elevation');
 const { collectHardware } = require('./hardware/collect');
 const { checkDrives } = require('./drives/smartctl');
 const { runMdmCheck, loadKnownTenants, mdmVerdict } = require('./intake/mdm');
+const { runDefenderScan, malwareVerdict } = require('./intake/defender');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
 const { Settings, resolveDataDir } = require('./settings');
 const { ReportStore, buildAudit } = require('./reports/store');
@@ -62,6 +63,8 @@ let stress = null;
 let lastDriveHealth = null;
 let lastMdm = null;
 let mdmPromise = null;
+let lastMalware = null;
+let malwarePromise = null;
 let drivePromise = null;
 
 /** Drive Health test: one check at a time; the latest result goes into the saved report. */
@@ -182,6 +185,17 @@ function registerIpc() {
   handle('app:info', async () => ({ ...appInfo(), elevated: await isElevated() }));
   handle('hardware:collect', (force) => getHardware(Boolean(force)));
   handle('drives:check', () => getDriveHealth());
+  // Defender scan (definition update + quick scan: minutes). One at a time.
+  handle('malware:run', () => {
+    if (!malwarePromise) {
+      malwarePromise = (async () => {
+        if (process.platform !== 'win32') return { status: 'unavailable', message: 'Microsoft Defender is Windows only.', threats: [], verdict: { status: null, summary: 'Windows only.' } };
+        const result = await runDefenderScan({ onProgress: (p) => mainWindow?.webContents.send('malware:progress', p) });
+        return (lastMalware = { ...result, verdict: malwareVerdict(result, { malwareFails: settings.get().malwareFails }) });
+      })().finally(() => (malwarePromise = null));
+    }
+    return malwarePromise;
+  });
   // MDM / Autopilot check (~30 s+). One run at a time; progress streams to the UI.
   handle('mdm:run', () => {
     if (!mdmPromise) {
@@ -228,7 +242,7 @@ function registerIpc() {
 
   handle('audit:save', async (input) => {
     const hw = lastHardware || (await getHardware());
-    const hardware = { ...hw, ...(lastDriveHealth && { driveHealth: lastDriveHealth }), ...(lastMdm && { intake: { mdm: lastMdm } }) };
+    const hardware = { ...hw, ...(lastDriveHealth && { driveHealth: lastDriveHealth }), ...((lastMdm || lastMalware) && { intake: { mdm: lastMdm, malware: lastMalware } }) };
     const audit = buildAudit({ input: input || {}, hardware, settings: settings.get(), app: appInfo() });
     const saved = await store.save(audit);
     return { ...saved, overall: audit.overall, id: audit.id };
@@ -419,14 +433,19 @@ async function runUiCheck() {
     ['Touchscreen', '3b-touch'],
     ['USB Ports', '4-ports'],
     ['MDM / Autopilot', '0-mdm'],
+    ['Malware Scan', '0b-malware'],
     ['Drive Health', '4b-drives'],
     ['Finish', '5-finish'],
   ]) {
     await click(label);
     await wait(name === '4-ports' ? 3000 : 600);
+    if (label === 'Malware Scan') {
+      // Only runs in OOBE (or BENCHWISE_ENV_MODE=oobe): wait for the result.
+      for (let i = 0; i < 240 && (await js(`!!document.querySelector('.malware-scan .spinner')`)); i++) await wait(500);
+    }
     if (label === 'MDM / Autopilot') {
       // Only runs when Benchwise is in OOBE (or BENCHWISE_ENV_MODE=oobe): wait for the result.
-      for (let i = 0; i < 120 && (await js(`!!document.querySelector('.mdm-check .spinner')`)); i++) await wait(500);
+      for (let i = 0; i < 200 && (await js(`!!document.querySelector('.mdm-check .spinner')`)); i++) await wait(500);
     }
     if (label === 'Drive Health') {
       // CI VMs have virtual disks only, so this is often auto-N/A.

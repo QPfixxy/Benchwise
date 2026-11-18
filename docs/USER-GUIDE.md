@@ -40,6 +40,7 @@ Every N/A can be overridden with **Run this test anyway**. If a unit's firmware 
 | USB Ports | See [USB port test](#usb-port-test) |
 | Drive Health | See [Drive health](#drive-health) |
 | MDM / Autopilot | See [MDM / Autopilot lock check](#mdm--autopilot-lock-check) (Windows setup only) |
+| Malware Scan | See [Malware scan](#malware-scan) (Windows setup only) |
 | CPU Stress | Every core runs integer, floating-point, cache and SHA-256 workloads with known answers, and one wrong answer fails the unit. Throughput is tracked in 5-second windows to detect thermal throttling. Temperature and clock are sampled where the OS allows. Profiles: 2, 10 or 30 minutes |
 | Memory Test | Fills 50–80% of free RAM with 7 patterns: stuck bits, coupling, walking ones, address lines and random. Every chunk is written before any is verified, so data really goes through RAM. A mismatch fails with the address and the flipped bits. It's a user-space test: RAM reserved by the OS isn't covered, so use a bootable tester such as MemTest86 on suspect units |
 
@@ -68,16 +69,33 @@ Each drive shows life remaining, power-on time, temperature, data written and po
 Checks whether a Windows unit is still registered to an organisation through Autopilot. It only runs during **Windows setup (OOBE)**: open a command prompt with Shift+F10 and start Benchwise from there. Everywhere else the test is N/A, because the answer can't be trusted.
 
 1. **Connection check:** the unit must reach the internet and Microsoft's Autopilot, sign-in and device-registration services. If it can't, the result is **Can't verify** and there's no verdict, because a locked unit could look clean. Fix the network and press **Run check** again.
-2. **Profile check:** for about 30 seconds, Benchwise watches for the Autopilot tenant that Windows downloads during setup.
+2. **Profile check:** for about 30 seconds, Benchwise watches for the Autopilot tenant that Windows downloads during setup. This is the proven logic from the intake toolkit.
+3. **Safety nets:** a unit is only called Clean when Windows' own record of asking Microsoft says **"not registered"**, and that answer came during this boot. If any other Windows record shows a tenant, the result is a possible lock for you to check by hand, never Clean.
 
 | Result | Meaning | Verdict |
 |---|---|---|
 | **Clean** | No Autopilot profile | Pass |
 | **Locked** | Registered to a known client, or to a named domain. Send to salvage | Fail (can be changed in Settings) |
 | **Ghost profile** | Only an unknown tenant ID, which isn't always a lock. Go through setup with Wi-Fi and see whether it forces a corporate sign-in | You decide |
+| **Possible lock** | No tenant in the usual place, but another Windows record shows one, or Microsoft says the unit is registered with no profile yet. Check by hand, as for a ghost profile | You decide |
+| **Clean, unconfirmed** | No tenant found, but there's no fresh "not registered" answer from Microsoft. Reconnect the network and run it again | You decide |
 | **Can't verify** | Microsoft wasn't reachable | You decide, after fixing the network |
 
 **Known tenants:** to show the client's name on a locked unit, point Settings at a `KnownTenants.txt` file (one `TenantId=Client name` per line), for example on your intake share. Otherwise Benchwise looks for `KnownTenants.txt` in its data folder (the USB stick in portable mode). It's client data, so keep it out of anything public.
+
+### Malware scan
+
+A Microsoft Defender scan of the installed Windows, run during **Windows setup (OOBE)** as part of intake. It runs in the background, so you can do other tests while it works.
+
+1. Updates Defender's definitions. If the update fails, for example with no internet, the scan still runs and the report says the definitions were not updated.
+2. Switches Defender to **audit-only mode**, so it takes no action on any threat level, and potentially unwanted apps are only audited. Nothing is removed; the evidence stays on the drive for the record until your wiping software erases it. Defender is left in this mode afterwards.
+3. Runs a quick scan, which usually takes a few minutes.
+
+**Results:** every detection in Defender's history is listed with its severity, location, and whether it came from this scan or earlier.
+- **By default, a unit with threats still passes this test.** The threats are documented in the report, and the unit gets wiped and reinstalled anyway. Turn on **Malware found fails the audit** in Settings to fail it instead.
+- **If Tamper Protection blocked audit mode,** the report says so, because Defender may then have quarantined what it found.
+
+The Overview, and every report from Windows, also shows **TPM, Secure Boot and BitLocker** status.
 
 ## Administrator access
 

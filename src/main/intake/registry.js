@@ -34,7 +34,8 @@ function parseRegQuery(text = '') {
  */
 function readKey(key, { exec = execFile, timeout = 8000 } = {}) {
   return new Promise((resolve) => {
-    exec('reg', ['query', key], { timeout, windowsHide: true, encoding: 'utf8' }, (err, stdout) => {
+    // /reg:64: always the 64-bit view, so WOW64 redirection can never hide a key.
+    exec('reg', ['query', key, '/reg:64'], { timeout, windowsHide: true, encoding: 'utf8' }, (err, stdout) => {
       if (err) return resolve(null);
       resolve(parseRegQuery(stdout));
     });

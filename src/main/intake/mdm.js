@@ -17,8 +17,19 @@
 //       anything else (unknown GUID)  -> ghost: check by hand, a ghost
 //                                        profile isn't always a lock
 //
-// The CloudAssignedTenantId/-Domain values are recorded as extra evidence
-// only; they never change the result.
+// Safety nets on top of v1 (agreed 2026-11-18). They can only make a result
+// MORE cautious, never turn Locked/Ghost into Clean:
+//
+//  - The registry must be readable at all, otherwise "can't verify".
+//  - v1 found no TenantId, but other Windows records show a tenant
+//    (CloudAssignedTenantId/-Domain/-Upn, forced enrollment, ProfileAvailable,
+//    or the cached Autopilot profile) -> ghost: check by hand.
+//  - Microsoft answered "registered, but no profile assigned" -> ghost.
+//  - Clean is CONFIRMED only when Windows' Autopilot policy cache holds
+//    Microsoft's own answer 807 "ZtdDeviceIsNotRegistered", fetched since this
+//    boot. With no answer, or only an older one (the unit may have been
+//    registered since), the result is "clean, unconfirmed": no automatic
+//    verdict.
 
 const fs = require('node:fs/promises');
 const https = require('node:https');
@@ -28,6 +39,11 @@ const { readKey } = require('./registry');
 const PING_HOST = '8.8.8.8';
 const ENDPOINTS = ['https://ztd.dds.microsoft.com', 'https://login.microsoftonline.com', 'https://enterpriseregistration.windows.net'];
 const REGISTRY_PATHS = ['HKLM\\SOFTWARE\\Microsoft\\Provisioning\\Diagnostics\\Autopilot', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\Autopilot\\Enrollment'];
+const POLICY_CACHE = 'HKLM\\SOFTWARE\\Microsoft\\Provisioning\\AutopilotPolicyCache';
+// Any key that always exists: proves reg.exe works and we can read HKLM.
+const REGISTRY_CANARY = 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion';
+// After v1's 30 s, wait up to this long more for Microsoft's answer to land.
+const CONFIRM_ROUNDS = 10;
 const GATE_ATTEMPTS = 4;
 const GATE_RETRY_MS = 3000;
 const POLL_ROUNDS = 10;
@@ -58,6 +74,81 @@ function classifyTenant(tenant, known = new Map()) {
   return { status: 'ghost', vendor: null };
 }
 
+const nonEmpty = (v) => (typeof v === 'string' ? v.trim() !== '' : false);
+
+/**
+ * Pure: the AutopilotPolicyCache key -> Microsoft's last answer. The cached
+ * JSON holds the download date, an error code (807 = not registered) and,
+ * for a registered unit, the tenant.
+ */
+function parsePolicyCache(values) {
+  if (!values) return null;
+  let json = null;
+  try {
+    json = values.PolicyJsonCache ? JSON.parse(values.PolicyJsonCache) : null;
+  } catch {
+    json = null;
+  }
+  let zero = null;
+  try {
+    const aad = typeof json?.CloudAssignedAadServerData === 'string' ? JSON.parse(json.CloudAssignedAadServerData) : json?.CloudAssignedAadServerData;
+    zero = aad?.ZeroTouchConfig || null;
+  } catch {
+    zero = null;
+  }
+  return {
+    profileAvailable: typeof values.ProfileAvailable === 'number' ? values.ProfileAvailable === 1 : null,
+    errorCode: json?.ErrorCode ?? null,
+    errorReason: json?.ErrorReason || null,
+    downloadedAt: json?.PolicyDownloadDate || null,
+    tenantId: json?.CloudAssignedTenantId || null,
+    tenantDomain: json?.CloudAssignedTenantDomain || zero?.CloudAssignedTenantDomain || null,
+    tenantUpn: zero?.CloudAssignedTenantUpn || null,
+    forcedEnrollment: Number(json?.CloudAssignedForcedEnrollment ?? zero?.ForcedEnrollment ?? 0) === 1,
+  };
+}
+
+/**
+ * Pure: everything Windows records besides v1's TenantId -> evidence of a
+ * tenant (strings describing what was found), plus Microsoft's answer.
+ */
+function tenantEvidence(diag, cache) {
+  const found = [];
+  if (diag) {
+    if (nonEmpty(diag.CloudAssignedTenantId)) found.push(`CloudAssignedTenantId ${diag.CloudAssignedTenantId}`);
+    if (nonEmpty(diag.CloudAssignedTenantDomain)) found.push(`CloudAssignedTenantDomain ${diag.CloudAssignedTenantDomain}`);
+    if (nonEmpty(diag.CloudAssignedTenantUpn)) found.push(`CloudAssignedTenantUpn ${diag.CloudAssignedTenantUpn}`);
+    if (diag.CloudAssignedForcedEnrollment === 1) found.push('CloudAssignedForcedEnrollment = 1');
+  }
+  if (cache) {
+    if (cache.profileAvailable) found.push('ProfileAvailable = 1 (an Autopilot profile was downloaded)');
+    if (cache.tenantId) found.push(`cached profile tenant ${cache.tenantId}`);
+    if (cache.tenantDomain) found.push(`cached profile domain ${cache.tenantDomain}`);
+    if (cache.tenantUpn) found.push(`cached profile UPN ${cache.tenantUpn}`);
+    if (cache.forcedEnrollment) found.push('cached profile forces enrollment');
+    if (cache.errorCode === 815 || /HasNoAssignedProfile/i.test(cache.errorReason || '')) {
+      found.push('Microsoft: registered to an organisation, no profile assigned yet');
+    }
+  }
+  return found;
+}
+
+/**
+ * Pure: when v1 says clean, is that confirmed by Microsoft's answer from
+ * this boot? Returns { confirmed, why }.
+ */
+function confirmClean(cache, bootTime) {
+  if (!cache || (cache.errorCode == null && !cache.errorReason)) return { confirmed: false, why: 'Windows has no record of asking Microsoft for an Autopilot profile.' };
+  const notRegistered = cache.errorCode === 807 || /ZtdDeviceIsNotRegistered/i.test(cache.errorReason || '');
+  if (!notRegistered) return { confirmed: false, why: `Microsoft's last answer was not "not registered" (${cache.errorCode ?? '?'} ${cache.errorReason || ''}).`.replace(' )', ')') };
+  const at = Date.parse(cache.downloadedAt || '');
+  if (!Number.isFinite(at)) return { confirmed: false, why: 'Microsoft answered "not registered", but the answer has no date.' };
+  if (bootTime != null && at < bootTime) {
+    return { confirmed: false, why: `Microsoft's "not registered" answer is from before this boot (${cache.downloadedAt}); the unit could have been registered since.` };
+  }
+  return { confirmed: true, why: `Microsoft answered "not registered" at ${cache.downloadedAt}.` };
+}
+
 /**
  * Pure: result -> test verdict. Ghost and "can't verify" get no automatic
  * verdict; the technician decides.
@@ -67,7 +158,12 @@ function mdmVerdict(result, { lockedFails = true } = {}) {
   const who = result.vendor || result.tenant;
   switch (result.status) {
     case 'clean':
-      return { status: 'pass', summary: 'Clean: no Autopilot profile found.' };
+      return { status: 'pass', summary: `Clean: no Autopilot profile, and Microsoft confirms the unit is not registered.` };
+    case 'unconfirmed':
+      return {
+        status: null,
+        summary: `No Autopilot profile found, but Microsoft's answer couldn't be confirmed: ${result.confirmation || ''} Reconnect the network and run the check again, or check by hand.`.replace('  ', ' '),
+      };
     case 'locked':
       return {
         status: lockedFails ? 'fail' : null,
@@ -76,12 +172,16 @@ function mdmVerdict(result, { lockedFails = true } = {}) {
     case 'ghost':
       return {
         status: null,
-        summary: 'Ghost profile: an unknown tenant ID, which is not always a lock. Check by hand: go through setup with Wi-Fi connected and see whether it forces a corporate sign-in.',
+        summary: result.safetyNet
+          ? `Possible lock: v1's check found no tenant, but Windows records show one (${(result.evidence || []).join('; ')}). Check by hand: go through setup with Wi-Fi connected and see whether it forces a corporate sign-in.`
+          : 'Ghost profile: an unknown tenant ID, which is not always a lock. Check by hand: go through setup with Wi-Fi connected and see whether it forces a corporate sign-in.',
       };
     case 'unverified':
       return {
         status: null,
-        summary: "Can't verify: Microsoft's services aren't reachable, so a locked unit could look clean. Fix the network and run the check again.",
+        summary: result.registryReadable === false
+          ? "Can't verify: the Windows registry couldn't be read, so a locked unit could look clean. Run Benchwise as administrator and try again."
+          : "Can't verify: Microsoft's services aren't reachable, so a locked unit could look clean. Fix the network and run the check again.",
       };
     default:
       return { status: null, summary: result.message || 'The check did not finish.' };
@@ -141,6 +241,8 @@ async function runMdmCheck({
   read = readKey,
   sleep = sleepMs,
   now = Date.now,
+  // When this boot started: an older answer from Microsoft doesn't count.
+  bootTime = Date.now() - require('node:os').uptime() * 1000,
 } = {}) {
   const started = now();
   const result = {
@@ -149,14 +251,29 @@ async function runMdmCheck({
     vendor: null,
     lockReason: null,
     registryPath: null,
+    registryReadable: null,
     cloudAssigned: null,
+    policyCache: null,
+    evidence: [],
+    safetyNet: null,
+    confirmation: null,
     network: { ok: false, attempts: 0, checks: [] },
     knownTenants: known.size,
     checkedAt: null,
     durationMs: 0,
   };
+  const finish = (status) => {
+    result.status = status;
+    result.checkedAt = new Date().toISOString();
+    result.durationMs = now() - started;
+    return result;
+  };
 
-  // 1. Network gate
+  // 0. Safety net: the registry must be readable, or "nothing found" means nothing.
+  result.registryReadable = (await read(REGISTRY_CANARY)) != null;
+  if (!result.registryReadable) return finish('unverified');
+
+  // 1. Network gate (v1)
   for (let attempt = 1; attempt <= GATE_ATTEMPTS && !result.network.ok; attempt++) {
     onProgress({ step: 'network', attempt, of: GATE_ATTEMPTS });
     const checks = [{ target: PING_HOST, ok: await pingHost(PING_HOST) }];
@@ -164,14 +281,9 @@ async function runMdmCheck({
     result.network = { ok: checks.every((c) => c.ok), attempts: attempt, checks };
     if (!result.network.ok && attempt < GATE_ATTEMPTS) await sleep(GATE_RETRY_MS);
   }
-  if (!result.network.ok) {
-    result.status = 'unverified';
-    result.checkedAt = new Date().toISOString();
-    result.durationMs = now() - started;
-    return result;
-  }
+  if (!result.network.ok) return finish('unverified');
 
-  // 2. Poll the registry
+  // 2. Poll the registry for v1's TenantId (v1: 10 x 3 s)
   let tenant = null;
   for (let round = 1; round <= POLL_ROUNDS && !tenant; round++) {
     onProgress({ step: 'poll', round, of: POLL_ROUNDS });
@@ -186,26 +298,64 @@ async function runMdmCheck({
     if (!tenant && round < POLL_ROUNDS) await sleep(POLL_INTERVAL_MS);
   }
 
-  // Extra evidence only (v2's wider read); never changes the result.
-  const diag = await read(REGISTRY_PATHS[0]);
-  if (diag && (diag.CloudAssignedTenantId || diag.CloudAssignedTenantDomain)) {
-    result.cloudAssigned = { tenantId: diag.CloudAssignedTenantId || null, tenantDomain: diag.CloudAssignedTenantDomain || null };
-  }
-
-  // 3. Classify
+  // 3. v1's classification. Locked and ghost stand exactly as v1 decides.
   const c = classifyTenant(tenant, known);
-  result.status = c.status;
   result.tenant = tenant ? cleanTenant(tenant) : null;
   result.vendor = c.vendor;
   result.lockReason = c.reason || null;
-  result.checkedAt = new Date().toISOString();
-  result.durationMs = now() - started;
-  return result;
+
+  // Everything else Windows records about Autopilot (kept in every report).
+  const readEvidence = async () => {
+    const diag = await read(REGISTRY_PATHS[0]);
+    const cache = parsePolicyCache(await read(POLICY_CACHE));
+    result.cloudAssigned = diag
+      ? {
+          tenantId: diag.CloudAssignedTenantId || null,
+          tenantDomain: diag.CloudAssignedTenantDomain || null,
+          tenantUpn: diag.CloudAssignedTenantUpn || null,
+          forcedEnrollment: diag.CloudAssignedForcedEnrollment ?? null,
+          autopilotDisabled: diag.IsAutoPilotDisabled ?? null,
+        }
+      : null;
+    result.policyCache = cache;
+    result.evidence = tenantEvidence(diag, cache);
+    return cache;
+  };
+  let cache = await readEvidence();
+  if (c.status !== 'clean') return finish(c.status);
+
+  // 4. Safety nets: v1 says clean. Any other sign of a tenant -> check by hand.
+  if (result.evidence.length) {
+    result.safetyNet = 'tenant-evidence';
+    return finish('ghost');
+  }
+  // Clean only with Microsoft's own fresh "not registered". It may land a
+  // little after v1's 30 s, so wait for it a while longer.
+  let conf = confirmClean(cache, bootTime);
+  for (let round = 1; round <= CONFIRM_ROUNDS && !conf.confirmed; round++) {
+    onProgress({ step: 'confirm', round, of: CONFIRM_ROUNDS });
+    await sleep(POLL_INTERVAL_MS);
+    cache = await readEvidence();
+    if (result.evidence.length) {
+      result.safetyNet = 'tenant-evidence';
+      return finish('ghost');
+    }
+    conf = confirmClean(cache, bootTime);
+  }
+  result.confirmation = conf.why;
+  if (!conf.confirmed) {
+    result.safetyNet = 'not-confirmed';
+    return finish('unconfirmed');
+  }
+  return finish('clean');
 }
 
 module.exports = {
   runMdmCheck,
   classifyTenant,
+  parsePolicyCache,
+  tenantEvidence,
+  confirmClean,
   parseKnownTenants,
   loadKnownTenants,
   mdmVerdict,

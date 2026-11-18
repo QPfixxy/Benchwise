@@ -135,3 +135,10 @@ test('MDM test: offered only during Windows setup (OOBE)', async () => {
   }
   assert.match(applicability('mdm', { hardware: hw('windows') }).reason, /OOBE/);
 });
+
+test('malware scan: offered during Windows setup (OOBE) only', async () => {
+  const [, { applicability }] = await load();
+  const hw = (mode) => ({ system: {}, storage: [], environment: { mode } });
+  assert.equal(applicability('malware', { hardware: hw('oobe') }).state, 'ready');
+  for (const mode of ['windows', 'audit', 'macos', 'live']) assert.equal(applicability('malware', { hardware: hw(mode) }).state, 'na', mode);
+});

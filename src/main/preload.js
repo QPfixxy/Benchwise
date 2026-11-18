@@ -8,6 +8,14 @@ contextBridge.exposeInMainWorld('benchwise', {
   appInfo: call('app:info'),
   collectHardware: call('hardware:collect'),
   checkDrives: call('drives:check'),
+  malware: {
+    run: call('malware:run'),
+    onProgress: (cb) => {
+      const listener = (_e, p) => cb(p);
+      ipcRenderer.on('malware:progress', listener);
+      return () => ipcRenderer.removeListener('malware:progress', listener);
+    },
+  },
   mdm: {
     run: call('mdm:run'),
     onProgress: (cb) => {

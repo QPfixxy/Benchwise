@@ -1,4 +1,5 @@
 import mdm from './mdm.js';
+import malware from './malware.js';
 import camera from './camera.js';
 import microphone from './microphone.js';
 import speakers from './speakers.js';
@@ -12,4 +13,4 @@ import memory from './memory.js';
 
 // Order here is the order the operator walks through them. Stress tests are
 // last; they can also be started first and left running during the others.
-export const TESTS = [mdm, display, keyboard, touchscreen, camera, microphone, speakers, ports, drives, cpu, memory];
+export const TESTS = [mdm, malware, display, keyboard, touchscreen, camera, microphone, speakers, ports, drives, cpu, memory];

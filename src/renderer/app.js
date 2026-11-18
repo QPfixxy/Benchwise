@@ -19,6 +19,7 @@ export const state = {
   session: null,
   route: 'overview',
   stress: { running: null, last: {} },
+  busy: {}, // test id -> true while a background check runs (sidebar spinner)
 };
 
 const listeners = new Set();
@@ -43,6 +44,12 @@ function newSession() {
     startedAt: new Date().toISOString(),
     tests: Object.fromEntries(enabledTests().map((t) => [t.id, { status: 'untested', notes: '', details: {} }])),
   };
+}
+
+/** Marks a test as running in the background (sidebar spinner). */
+export function setBusy(id, on) {
+  state.busy = { ...state.busy, [id]: Boolean(on) };
+  emit();
 }
 
 export function enabledTests() {
@@ -258,7 +265,7 @@ function renderNav() {
     enabledTests().map((t) => {
       const r = state.session.tests[t.id];
       const indicator =
-        state.stress.running?.kind === t.id ? el('span', { class: 'spinner sm', title: 'Running' }) : el('span', { class: `dot s-${r?.status || 'untested'}` });
+        state.stress.running?.kind === t.id || state.busy[t.id] ? el('span', { class: 'spinner sm', title: 'Running' }) : el('span', { class: `dot s-${r?.status || 'untested'}` });
       const node = link(`test:${t.id}`, t.name, indicator);
       if (r?.auto) {
         node.classList.add('auto-na');

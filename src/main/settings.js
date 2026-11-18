@@ -7,7 +7,7 @@ const { giveToOwner } = require('./elevation');
 const SETTINGS_FILE = 'benchwise-settings.json';
 const LEGACY_SETTINGS_FILE = 'qudit-settings.json'; // Benchwise was called Qudit before 2.1
 
-const TEST_IDS = ['mdm', 'camera', 'microphone', 'speakers', 'keyboard', 'display', 'touchscreen', 'ports', 'drives', 'cpu', 'memory'];
+const TEST_IDS = ['mdm', 'malware', 'camera', 'microphone', 'speakers', 'keyboard', 'display', 'touchscreen', 'ports', 'drives', 'cpu', 'memory'];
 
 const DEFAULTS = Object.freeze({
   stationName: '',
@@ -22,6 +22,8 @@ const DEFAULTS = Object.freeze({
   knownTenantsFile: '',
   // Site policy: does a locked unit fail the audit? (Some sites only record it.)
   mdmLockedFails: true,
+  // Site policy: does malware fail the audit, or is it only recorded?
+  malwareFails: false,
   enabledTests: TEST_IDS.reduce((acc, id) => ({ ...acc, [id]: true }), {}),
 });
 
@@ -122,6 +124,7 @@ function sanitize(v) {
     reportsDir: str(v.reportsDir, 1024),
     knownTenantsFile: str(v.knownTenantsFile, 1024),
     mdmLockedFails: v.mdmLockedFails !== false,
+    malwareFails: v.malwareFails === true,
     enabledTests,
   };
 }

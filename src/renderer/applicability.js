@@ -102,6 +102,14 @@ export function applicability(testId, { hardware, media = {}, maxTouchPoints = 0
         return { state: 'na', reason: 'Tablet: no built-in keyboard (a keyboard cover is an accessory).' };
       }
       return { state: 'ready', warning: p.lidClosed && p.portable ? 'The lid is closed: keys typed now come from an external keyboard, not the built-in one.' : null };
+    case 'malware': {
+      // Scans the installed Windows during setup (OOBE), before the unit is
+      // wiped and reinstalled: that's where the intake process runs it.
+      const mode = hardware.environment?.mode;
+      if (mode === 'oobe') return { state: 'ready' };
+      if (!['audit', 'windows', 'winpe'].includes(mode)) return { state: 'na', reason: 'Windows only: the malware scan uses Microsoft Defender on the installed Windows.' };
+      return { state: 'na', reason: 'Run the malware scan during Windows setup (OOBE, Shift+F10), as part of intake. It switches Defender to audit-only mode, which is not wanted on a finished installation.' };
+    }
     case 'mdm': {
       // The Autopilot lock is only trustworthy during Windows setup, when
       // Windows downloads its Autopilot profile from Microsoft.

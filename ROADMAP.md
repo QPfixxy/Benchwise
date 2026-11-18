@@ -82,7 +82,11 @@ Brings in the OOBE intake gate from the separate `benchwise-intake` project. Wor
 
 **MDM / Autopilot test.** It ports v1's detection logic exactly and is offered only when Benchwise is running in OOBE. Anywhere else it reads "run during Windows setup".
 - **Network gate:** before checking, it must reach `8.8.8.8` plus Microsoft's Autopilot, sign-in and device-registration services, with 4 tries. If it can't, the result is "Can't verify: fix the network and retry", with no verdict, because a locked unit could otherwise look clean.
-- **Detection:** it polls the Autopilot `TenantId` registry values for about 30 seconds. `CloudAssignedTenantId` and `CloudAssignedTenantDomain` are recorded as extra evidence but don't affect the verdict.
+- **Detection:** it polls the Autopilot `TenantId` registry values for about 30 seconds, exactly as v1 does.
+- **Safety nets on top of v1,** which can only make a result more cautious:
+  - The registry must be readable, and is always read in its 64-bit view.
+  - Any other sign of a tenant (`CloudAssigned*`, `ProfileAvailable`, the cached Autopilot profile, forced enrollment, or Microsoft's "registered, no profile assigned" answer) makes it a **possible lock**, checked by hand.
+  - **Clean is confirmed** only by Microsoft's own "not registered" answer (807) from this boot, read from Windows' Autopilot policy cache. Without it, the result is "clean, unconfirmed" with no verdict.
 - **Results:**
   - **Clean** (Pass): no tenant.
   - **Locked** (Fail by default): the tenant is in the known-tenants list, or is a domain. It shows "Locked to <tenant>: send to salvage". Whether Locked fails the audit will become a site setting, because other organisations treat it differently.

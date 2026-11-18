@@ -19,6 +19,7 @@ const STATUS_LABEL = { pass: 'PASS', fail: 'FAIL', na: 'N/A', untested: 'NOT TES
 
 const TEST_NAMES = {
   mdm: 'MDM / Autopilot',
+  malware: 'Malware Scan',
   camera: 'Camera',
   microphone: 'Microphone',
   speakers: 'Speakers',
@@ -87,6 +88,17 @@ function driveHealthSection(dh) {
     ];
   });
   return `<h2>Drive health</h2>${grid(['Drive', 'Serial', 'Health', 'Life left', 'Power-on hrs', 'Issues'], rows)}`;
+}
+
+/** TPM / Secure Boot / BitLocker rows (Windows only). */
+function securityRows(sec) {
+  if (!sec) return [];
+  const j = (...xs) => xs.filter(Boolean).join(' · ');
+  return [
+    ['TPM', sec.tpm ? (sec.tpm.present ? j(sec.tpm.version && `TPM ${sec.tpm.version}`, sec.tpm.manufacturer) || 'Present' : 'Not present') : null],
+    ['Secure Boot', { enabled: 'On', disabled: 'Off', unsupported: 'Not supported (legacy BIOS)' }[sec.secureBoot] || null],
+    ['BitLocker', sec.bitLocker ? j(sec.bitLocker.conversion, sec.bitLocker.protection) : null],
+  ];
 }
 
 async function renderReportHtml(audit, { logoDataUrl } = {}) {
@@ -159,6 +171,7 @@ async function renderReportHtml(audit, { logoDataUrl } = {}) {
     ['Unit type', unitType(sys)],
     ['BIOS', [sys.bios?.vendor, sys.bios?.version, sys.bios?.releaseDate].filter(Boolean).join(' · ')],
     ['OS', [sys.os?.distro, sys.os?.release, sys.os?.arch].filter(Boolean).join(' ')],
+    ...securityRows(hw.security),
   ])}</section>
   <section><h2>Processor</h2>${kv([
     ['Model', cpu.name, true],

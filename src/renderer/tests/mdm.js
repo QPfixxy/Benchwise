@@ -1,5 +1,6 @@
 import { el, fill, toast } from '../dom.js';
 import { resultPanel } from './common.js';
+import { setBusy } from '../app.js';
 
 const clean = (msg) => String(msg).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
@@ -8,6 +9,7 @@ const LOOK = {
   clean: ['ok', '✓ Clean'],
   locked: ['missing', '✕ Locked'],
   ghost: ['warn', '⚠ Ghost profile: check by hand'],
+  unconfirmed: ['warn', '⚠ Clean, but not confirmed by Microsoft'],
   unverified: ['warn', "⚠ Can't verify"],
 };
 
@@ -15,7 +17,7 @@ export default {
   id: 'mdm',
   name: 'MDM / Autopilot',
   description:
-    "Checks whether this unit is still registered to an organisation through Windows Autopilot (an MDM lock). Runs during Windows setup (OOBE), when the unit asks Microsoft for its Autopilot profile. Takes about 30 seconds.",
+    "Checks whether this unit is still registered to an organisation through Windows Autopilot (an MDM lock). Runs during Windows setup (OOBE), when the unit asks Microsoft for its Autopilot profile. Takes 30–60 seconds.",
   mount(root, ctx) {
     const body = el('div', { class: 'mdm-check' });
     const runBtn = el('button', { class: 'btn primary big', onclick: () => run() }, 'Run check');
@@ -26,7 +28,9 @@ export default {
       progressLine.textContent =
         p.step === 'network'
           ? `Checking the connection to Microsoft (attempt ${p.attempt} of ${p.of})…`
-          : `Looking for an Autopilot profile (${p.round} of ${p.of})…`;
+          : p.step === 'confirm'
+            ? `Waiting for Microsoft's answer (${p.round} of ${p.of})…`
+            : `Looking for an Autopilot profile (${p.round} of ${p.of})…`;
     });
 
     function applyVerdict(res) {
@@ -39,6 +43,8 @@ export default {
           source: 'mdm',
           summary: res.verdict.summary,
           result: res.status,
+          safetyNet: res.safetyNet,
+          microsoft: res.policyCache?.errorReason ? `${res.policyCache.errorCode} ${res.policyCache.errorReason} (${res.policyCache.downloadedAt || 'no date'})` : null,
           tenant: res.tenant,
           client: res.vendor,
           registryPath: res.registryPath,
@@ -50,6 +56,7 @@ export default {
       running = true;
       runBtn.disabled = true;
       progressLine.textContent = 'Starting…';
+      setBusy('mdm', true);
       render();
       try {
         const res = await ctx.api.mdm.run();
@@ -60,6 +67,7 @@ export default {
       } finally {
         running = false;
         runBtn.disabled = false;
+        setBusy('mdm', false);
         render();
       }
     }
@@ -68,7 +76,7 @@ export default {
       const res = ctx.state.mdm;
       if (running) return fill(body, el('div', { class: 'row' }, el('span', { class: 'spinner' }), progressLine));
       if (!res) return fill(body);
-      const [cls, title] = LOOK[res.status] || ['na', 'No result'];
+      const [cls, title] = res.status === 'ghost' && res.safetyNet ? ['warn', '⚠ Possible lock: check by hand'] : LOOK[res.status] || ['na', 'No result'];
       const sys = ctx.state.hardware?.system || {};
       const failedChecks = (res.network?.checks || []).filter((c) => !c.ok).map((c) => c.target);
       fill(
