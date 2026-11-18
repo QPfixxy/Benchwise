@@ -460,9 +460,13 @@ const SAFE_TAG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
  * Validates an asset tag against the shop's configured pattern and a fixed
  * filename-safe character set (enforced in the main process, never only in UI).
  */
-function validateAssetTag(tag, pattern) {
+/**
+ * The asset tag is optional unless the station requires it: records are keyed
+ * on the manufacturer serial, and an empty tag is stored as null.
+ */
+function validateAssetTag(tag, pattern, { required = false } = {}) {
   const v = clean(tag);
-  if (!v) return { ok: false, error: 'Asset tag is required.' };
+  if (!v) return required ? { ok: false, error: 'Asset tag is required.' } : { ok: true, value: null };
   if (!SAFE_TAG.test(v)) {
     return { ok: false, error: 'Use letters, digits, dot, dash or underscore (max 64).' };
   }

@@ -56,6 +56,13 @@ export default {
             'Leave empty to accept any tag. Matched against the whole tag.',
           ),
           patternError,
+          el(
+            'label',
+            { class: 'check' },
+            el('input', { type: 'checkbox', checked: s.assetTagRequired === true, onchange: (e) => (s.assetTagRequired = e.target.checked) }),
+            'Require an asset tag to save',
+          ),
+          el('p', { class: 'muted small' }, 'Off by default: records are identified by the manufacturer serial.'),
         ),
         el(
           'section',

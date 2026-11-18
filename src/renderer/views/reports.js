@@ -34,7 +34,7 @@ export default {
                   el(
                     'tr',
                     {},
-                    el('td', {}, el('strong', {}, r.assetTag)),
+                    el('td', {}, el('strong', {}, r.assetTag || r.serial || '—')),
                     el('td', {}, new Date(r.completedAt).toLocaleString()),
                     el('td', {}, [r.manufacturer, r.model].filter(Boolean).join(' ')),
                     el('td', {}, r.serial ? el('code', {}, r.serial) : '—'),

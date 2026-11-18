@@ -6,6 +6,8 @@ const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
 contextBridge.exposeInMainWorld('benchwise', {
   appInfo: call('app:info'),
+  quit: call('app:quit'),
+  shutdown: call('system:shutdown'),
   collectHardware: call('hardware:collect'),
   checkDrives: call('drives:check'),
   malware: {

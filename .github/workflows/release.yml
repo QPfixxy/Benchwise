@@ -117,6 +117,7 @@ jobs:
           name: benchwise-build-${{ matrix.os }}
           path: |
             dist/*.exe
+            dist/*.zip
             dist/*.dmg
             dist/*.AppImage
             pkg-check/

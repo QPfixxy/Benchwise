@@ -148,7 +148,8 @@ test('overall status', () => {
 test('asset tags are validated server-side against path traversal and shop format', () => {
   assert.equal(n.validateAssetTag('../../etc/passwd').ok, false); // original wrote this as a filename
   assert.equal(n.validateAssetTag('a/b').ok, false);
-  assert.equal(n.validateAssetTag('').ok, false);
+  assert.deepEqual(n.validateAssetTag(''), { ok: true, value: null }, 'optional by default');
+  assert.equal(n.validateAssetTag('', '', { required: true }).ok, false);
   assert.equal(n.validateAssetTag('1234567-7654321', '\\d{7}-\\d{7}').ok, true);
   assert.equal(n.validateAssetTag('1234567-765432', '\\d{7}-\\d{7}').ok, false);
   assert.equal(n.validateAssetTag('1234567-7654321x', '\\d{7}-\\d{7}').ok, false); // anchored

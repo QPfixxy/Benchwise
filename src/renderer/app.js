@@ -1,5 +1,6 @@
 import { el, append, clear, toast, statusBadge } from './dom.js';
 import { TESTS } from './tests/index.js';
+import { startMalwareScan } from './tests/malware.js';
 import { applicability } from './applicability.js';
 import { rankDevices } from './devices.js';
 import overview from './views/overview.js';
@@ -32,6 +33,7 @@ function emit() {
   renderNav();
   renderSessionBar();
   for (const fn of listeners) fn(state);
+  maybeFinishIntake();
 }
 
 // ------------------------------------------------------------------ session
@@ -42,8 +44,26 @@ function newSession() {
     technician: state.settings?.defaultTechnician || '',
     notes: '',
     startedAt: new Date().toISOString(),
-    tests: Object.fromEntries(enabledTests().map((t) => [t.id, { status: 'untested', notes: '', details: {} }])),
+    tests: Object.fromEntries(stationTests().map((t) => [t.id, { status: 'untested', notes: '', details: {} }])),
+    // 'intake' (Windows setup: lock + malware checks) or 'full'. Chosen once
+    // the hardware scan says where we're running; null until then.
+    profile: state.hardware ? defaultProfile() : null,
   };
+}
+
+// Tests per profile; null = every test enabled in Settings.
+const PROFILE_TESTS = { full: null, intake: ['mdm', 'malware'] };
+export const PROFILE_LABELS = { intake: 'Intake checks', full: 'Full audit' };
+
+export const inSetup = () => state.hardware?.environment?.mode === 'oobe';
+const defaultProfile = () => (inSetup() ? 'intake' : 'full');
+
+/** Switches between the intake checks and the full audit (results are kept). */
+export function setProfile(profile) {
+  if (!(profile in PROFILE_TESTS)) return;
+  state.session.profile = profile;
+  emit();
+  renderView();
 }
 
 /** Marks a test as running in the background (sidebar spinner). */
@@ -52,8 +72,15 @@ export function setBusy(id, on) {
   emit();
 }
 
-export function enabledTests() {
+/** Every test enabled at this station (Settings). */
+function stationTests() {
   return TESTS.filter((t) => state.settings?.enabledTests?.[t.id] !== false);
+}
+
+/** The tests of the current profile: what the sidebar, verdict and report cover. */
+export function enabledTests() {
+  const only = PROFILE_TESTS[state.session?.profile || 'full'];
+  return stationTests().filter((t) => !only || only.includes(t.id));
 }
 
 export function setTestResult(id, { status, details, notes }) {
@@ -109,7 +136,7 @@ export function overall() {
 /** Mirrors the main-process validation so the operator gets instant feedback. */
 export function validateAssetTag(tag) {
   const v = (tag || '').trim();
-  if (!v) return `${state.settings.assetTagLabel} is required.`;
+  if (!v) return state.settings.assetTagRequired ? `${state.settings.assetTagLabel} is required.` : null;
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(v)) return 'Use letters, digits, dot, dash or underscore (max 64).';
   const p = state.settings.assetTagPattern;
   if (p) {
@@ -123,6 +150,9 @@ export function validateAssetTag(tag) {
 }
 
 export function startNewAudit() {
+  state.mdm = null;
+  state.malware = null;
+  state.driveHealth = null;
   newSession();
   navigate('overview');
   emit();
@@ -143,6 +173,39 @@ export async function scanHardware(force = false) {
     state.scanning = false;
     emit();
   }
+  if (state.hardware && state.session && !state.session.profile) beginSession();
+}
+
+/**
+ * First scan done: pick the profile. In Windows setup that's intake, with
+ * zero clicks: the malware scan starts in the background (it's the slow one)
+ * and the MDM page opens, which runs its check straight away.
+ */
+function beginSession() {
+  state.session.profile = defaultProfile();
+  emit();
+  if (state.session.profile !== 'intake') return;
+  const ready = (id) => enabledTests().some((t) => t.id === id) && testApplicability(id).state === 'ready';
+  if (ready('malware')) {
+    startMalwareScan({
+      api,
+      state,
+      setResult: (r) => setTestResult('malware', r),
+      getResult: () => state.session.tests.malware,
+    });
+  }
+  if (ready('mdm')) navigate('test:mdm');
+}
+
+/** Intake: when both checks have a result, show the summary (once per unit). */
+function maybeFinishIntake() {
+  const s = state.session;
+  if (!s || s.profile !== 'intake' || s.intakeSummaryShown) return;
+  if (!state.route.startsWith('test:')) return;
+  const done = (id) => !enabledTests().some((t) => t.id === id) || testApplicability(id).state !== 'ready' || state[id];
+  if (state.busy.mdm || state.busy.malware || !done('mdm') || !done('malware')) return;
+  s.intakeSummaryShown = true;
+  setTimeout(() => navigate('finish'), 1500); // let the last result be seen
 }
 
 export async function refreshMedia() {
@@ -261,6 +324,15 @@ function renderNav() {
     );
   append(nav, [
     link('overview', 'System Overview', state.scanning ? el('span', { class: 'spinner sm' }) : null),
+    inSetup() && state.session.profile
+      ? el(
+          'div',
+          { class: 'profile-switch', role: 'group', 'aria-label': 'Test profile' },
+          ['intake', 'full'].map((p) =>
+            el('button', { class: `seg${state.session.profile === p ? ' active' : ''}`, onclick: () => setProfile(p) }, PROFILE_LABELS[p]),
+          ),
+        )
+      : null,
     el('div', { class: 'nav-section' }, 'Tests'),
     enabledTests().map((t) => {
       const r = state.session.tests[t.id];
@@ -309,7 +381,7 @@ function renderSessionBar() {
   const tagInput = el('input', {
     id: 'assetTagInput',
     value: s.assetTag,
-    placeholder: state.settings.assetTagPattern ? `Format: ${state.settings.assetTagPattern}` : 'Scan or type',
+    placeholder: state.settings.assetTagPattern ? `Format: ${state.settings.assetTagPattern}` : state.settings.assetTagRequired ? 'Scan or type' : 'Optional',
     autocomplete: 'off',
     spellcheck: 'false',
     oninput: (e) => {
@@ -390,9 +462,9 @@ function onStressEvent(e) {
 export async function reloadSettings() {
   state.settings = await api.getSettings();
   // Tests enabled after the session started need a result slot.
-  for (const t of enabledTests()) state.session.tests[t.id] ??= { status: 'untested', notes: '', details: {} };
+  for (const t of stationTests()) state.session.tests[t.id] ??= { status: 'untested', notes: '', details: {} };
   for (const id of Object.keys(state.session.tests)) {
-    if (!enabledTests().some((t) => t.id === id)) delete state.session.tests[id];
+    if (!stationTests().some((t) => t.id === id)) delete state.session.tests[id];
   }
   emit();
 }

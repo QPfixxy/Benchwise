@@ -18,6 +18,18 @@ function str(x, max) {
 }
 
 /** Keep only well-formed test results; anything unexpected becomes 'untested'. */
+// Test profiles. Intake (Windows setup): just the lock and malware checks.
+const PROFILES = {
+  full: { tests: null },
+  intake: { tests: ['mdm', 'malware'] },
+};
+
+/** File name key: the asset tag, else the manufacturer serial. */
+function fileKey(audit) {
+  const key = audit.assetTag || audit.serial || 'NO-SERIAL';
+  return String(key).replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'NO-SERIAL';
+}
+
 function sanitizeTests(tests, enabledIds) {
   const out = {};
   for (const id of enabledIds) {
@@ -41,11 +53,13 @@ function sanitizeTests(tests, enabledIds) {
  * snapshot; the renderer only contributes operator input and test results.
  */
 function buildAudit({ input, hardware, settings, app }) {
-  const tag = validateAssetTag(input.assetTag, settings.assetTagPattern);
+  const tag = validateAssetTag(input.assetTag, settings.assetTagPattern, { required: settings.assetTagRequired === true });
   if (!tag.ok) throw new Error(tag.error);
+  const profile = PROFILES[input.profile] ? input.profile : 'full';
   const enabledIds = Object.entries(settings.enabledTests)
     .filter(([, on]) => on)
-    .map(([id]) => id);
+    .map(([id]) => id)
+    .filter((id) => !PROFILES[profile].tests || PROFILES[profile].tests.includes(id));
   const tests = sanitizeTests(input.tests, enabledIds);
   const media = input.media || {};
   const list = (xs) => (Array.isArray(xs) ? xs.slice(0, 20).map((x) => str(x, 200)).filter(Boolean) : []);
@@ -55,6 +69,8 @@ function buildAudit({ input, hardware, settings, app }) {
     id: crypto.randomUUID(),
     assetTag: tag.value,
     assetTagLabel: settings.assetTagLabel,
+    serial: hardware?.system?.serial || null,
+    profile,
     technician: str(input.technician, 80),
     station: settings.stationName,
     notes: str(input.notes, 4000),
@@ -99,7 +115,7 @@ class ReportStore {
   /** Saves JSON + PDF. Never overwrites an existing report. */
   async save(audit) {
     await fs.mkdir(this.dir, { recursive: true });
-    const base = await this.#uniqueBase(`${audit.assetTag}_${stamp(audit.completedAt)}`);
+    const base = await this.#uniqueBase(`${fileKey(audit)}_${stamp(audit.completedAt)}`);
     const jsonPath = path.join(this.dir, `${base}.json`);
     const pdfPath = path.join(this.dir, `${base}.pdf`);
     await this.#writeAtomic(jsonPath, JSON.stringify(audit, null, 2));

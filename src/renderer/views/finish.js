@@ -1,6 +1,44 @@
 import { el, fill, statusBadge, toast } from '../dom.js';
-import { enabledTests, overall, validateAssetTag } from '../app.js';
+import { enabledTests, overall, validateAssetTag, inSetup, setProfile } from '../app.js';
 import { unitDevices, describeDevice } from '../devices.js';
+
+// Intake: one big tile per check (the session's result for that test).
+const TILE = {
+  pass: ['ok', '✓'],
+  fail: ['missing', '✕'],
+  na: ['na', '–'],
+  untested: ['warn', '⚠'],
+};
+
+function intakeTiles(s, tests, navigate) {
+  return el(
+    'div',
+    { class: 'intake-tiles' },
+    tests.map((t) => {
+      const r = s.tests[t.id] || {};
+      // Threats found but "recorded, not failed" must still look like a finding.
+      const [cls, mark] = r.details?.result === 'infected' ? ['missing', '⚠'] : TILE[r.status || 'untested'] || TILE.untested;
+      return el(
+        'button',
+        { class: `notice ${cls} intake-tile`, onclick: () => navigate(`test:${t.id}`), title: 'Open this test' },
+        el('strong', {}, `${mark} ${t.name}`),
+        el('p', {}, r.details?.summary || r.details?.autoNa || (r.status === 'untested' ? 'Needs your decision: open the test.' : '')),
+      );
+    }),
+  );
+}
+
+/** Save location problems, shown before the technician saves. */
+function storageWarnings(info) {
+  const st = info?.storage;
+  if (!st?.temporary) return null;
+  return el(
+    'div',
+    { class: 'notice warn' },
+    el('strong', {}, 'Reports would be lost'),
+    el('p', {}, `Reports are set to save in Windows' temporary setup account (${st.reportsDir}), which is deleted when setup finishes. Start Benchwise from the stick's BENCHWISE launcher, or set a reports folder (e.g. your share) in Settings.`),
+  );
+}
 
 const summarize = (details = {}) =>
   Object.entries(details)
@@ -26,9 +64,12 @@ export default {
       if (key === lastKey) return;
       lastKey = key;
       const saveBtn = el('button', { class: 'btn primary big', disabled: Boolean(tagError) || saving, onclick: save }, saving ? 'Saving…' : 'Save report');
+      const intake = s.profile === 'intake';
 
-      fill(body, 
-        el(
+      fill(body,
+        storageWarnings(ctx.state.info),
+        intake ? intakeTiles(s, tests, ctx.navigate) : null,
+        intake ? null : el(
           'table',
           { class: 'grid tests-summary' },
           el('thead', {}, el('tr', {}, ['Test', 'Result', 'Details', 'Notes'].map((h) => el('th', {}, h)))),
@@ -72,26 +113,31 @@ export default {
           technician: s.technician,
           notes: s.notes,
           startedAt: s.startedAt,
+          profile: s.profile || 'full',
           tests: s.tests,
           // Only devices that can belong to the unit (no phones / virtual devices).
           media: Object.fromEntries(
             Object.entries(ctx.state.media).map(([k, list]) => [k, unitDevices(list).map((d) => describeDevice(d.label))]),
           ),
         });
-        fill(resultBox, 
+        fill(resultBox,
           el(
             'div',
             { class: 'card saved' },
             el('h2', {}, 'Report saved ', statusBadge(res.overall)),
+            res.fallback
+              ? el('p', { class: 'warn-text' }, `Couldn't save to ${res.fallback.failedDir} (${res.fallback.reason}). Saved here instead, so nothing is lost:`)
+              : null,
             el('p', { class: 'muted small' }, res.jsonPath),
             res.pdfError ? el('p', { class: 'fail-text' }, `PDF could not be generated: ${res.pdfError}. The JSON record was saved.`) : null,
             el(
               'div',
               { class: 'row' },
-              res.pdfPath ? el('button', { class: 'btn', onclick: () => ctx.api.openReport(res.file, 'pdf') }, 'Open PDF') : null,
-              el('button', { class: 'btn', onclick: () => ctx.api.revealReport(res.file) }, 'Show in folder'),
-              el('button', { class: 'btn primary', onclick: () => ctx.startNewAudit() }, 'Start next unit →'),
+              res.pdfPath && !res.fallback ? el('button', { class: 'btn', onclick: () => ctx.api.openReport(res.file, 'pdf') }, 'Open PDF') : null,
+              res.fallback ? null : el('button', { class: 'btn', onclick: () => ctx.api.revealReport(res.file) }, 'Show in folder'),
+              inSetup() ? null : el('button', { class: 'btn primary', onclick: () => ctx.startNewAudit() }, 'Start next unit →'),
             ),
+            inSetup() ? doneButtons(ctx) : null,
           ),
         );
         toast('Report saved', 'success');
@@ -103,8 +149,19 @@ export default {
       }
     }
 
+    const intakeHead = s.profile === 'intake';
     root.append(
-      el('div', { class: 'page-head' }, el('div', {}, el('h1', {}, 'Finish & Save'), el('p', { class: 'muted' }, 'Review results, then save the PDF and JSON record. Click a row to revisit a test.'))),
+      el(
+        'div',
+        { class: 'page-head' },
+        el(
+          'div',
+          {},
+          el('h1', {}, intakeHead ? 'Intake summary' : 'Finish & Save'),
+          el('p', { class: 'muted' }, intakeHead ? 'Lock and malware results for this unit. Save the record, then shut down or go back to Windows setup.' : 'Review results, then save the PDF and JSON record. Click a row to revisit a test.'),
+        ),
+        intakeHead ? el('button', { class: 'btn', onclick: () => setProfile('full') }, 'Run the full audit →') : null,
+      ),
       body,
       resultBox,
     );
@@ -119,3 +176,27 @@ export default {
     };
   },
 };
+
+/** Windows setup: what to do with the unit once its record is saved. */
+function doneButtons(ctx) {
+  return el(
+    'div',
+    { class: 'row done-actions' },
+    el(
+      'button',
+      {
+        class: 'btn big',
+        onclick: async () => {
+          if (!confirm('Shut down this unit now?')) return;
+          try {
+            await ctx.api.shutdown();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      'Shut down',
+    ),
+    el('button', { class: 'btn big', onclick: () => ctx.api.quit() }, 'Exit to Windows setup'),
+  );
+}

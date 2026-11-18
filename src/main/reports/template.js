@@ -116,7 +116,7 @@ async function renderReportHtml(audit, { logoDataUrl } = {}) {
   const hybrid =
     cpu.performanceCores && cpu.efficiencyCores ? ` (${cpu.performanceCores}P + ${cpu.efficiencyCores}E)` : '';
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(audit.assetTag)}</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(audit.assetTag || sys.serial || 'Benchwise report')}</title><style>
   @page { size: Letter; margin: 14mm 12mm; }
   * { box-sizing: border-box; }
   body { font: 9.5pt/1.35 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #111; margin: 0; }
@@ -158,7 +158,7 @@ async function renderReportHtml(audit, { logoDataUrl } = {}) {
 </header>
 
 <div class="ids">
-  <div class="id">${tagQr}<div><div class="label">${esc(audit.assetTagLabel || 'Asset Tag')}</div><div class="value">${esc(audit.assetTag)}</div></div></div>
+  ${audit.assetTag ? `<div class="id">${tagQr}<div><div class="label">${esc(audit.assetTagLabel || 'Asset Tag')}</div><div class="value">${esc(audit.assetTag)}</div></div></div>` : ''}
   ${sys.serial ? `<div class="id">${serialQr}<div><div class="label">System Serial</div><div class="value">${esc(sys.serial)}</div></div></div>` : ''}
 </div>
 

@@ -80,6 +80,8 @@ Brings in the OOBE intake gate from the separate `benchwise-intake` project. Wor
 - The full MDM check: a Microsoft-confirmed Clean in 29 seconds.
 - The Defender scan: definitions updated and a quick scan in about 3 minutes. Tamper Protection blocked audit mode in the VM.
 
+**Step 3 is built:** the Intake profile, an optional asset tag, the stick launcher (`BENCHWISE.CMD` with `site.cmd`), saving to the stick or share, and the Shut down / Exit buttons. The launcher was tested in the OOBE VM.
+
 **Still needs real hardware:** a locked unit, a ghost-profile unit, and Defender audit mode.
 
 **Build order:**

@@ -16,6 +16,8 @@ const DEFAULTS = Object.freeze({
   // Regex (without ^ $) the asset tag must match. Empty = any safe tag.
   // The original Qudit 1.x format was: \d{7}-\d{7}
   assetTagPattern: '',
+  // Off by default: records are keyed on the manufacturer serial.
+  assetTagRequired: false,
   reportsDir: '', // empty = <data dir>/reports
   // MDM / Autopilot test. KnownTenants.txt is client data: it lives on the
   // intake share or the stick, never in the app. Empty = <data dir>/KnownTenants.txt.
@@ -108,7 +110,9 @@ class Settings {
   }
 
   reportsDir() {
-    return this.values.reportsDir ? path.resolve(this.values.reportsDir) : path.join(this.dataDir, 'reports');
+    // BENCHWISE_REPORTS_DIR: set by the stick launcher's site.cmd (e.g. the intake share).
+    const dir = process.env.BENCHWISE_REPORTS_DIR || this.values.reportsDir;
+    return dir ? path.resolve(dir) : path.join(this.dataDir, 'reports');
   }
 }
 
@@ -121,6 +125,7 @@ function sanitize(v) {
     defaultTechnician: str(v.defaultTechnician, 80),
     assetTagLabel: str(v.assetTagLabel, 40) || DEFAULTS.assetTagLabel,
     assetTagPattern: str(v.assetTagPattern, 200),
+    assetTagRequired: v.assetTagRequired === true,
     reportsDir: str(v.reportsDir, 1024),
     knownTenantsFile: str(v.knownTenantsFile, 1024),
     mdmLockedFails: v.mdmLockedFails !== false,

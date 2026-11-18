@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { execFile } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, protocol, net, session, shell, dialog, systemPreferences, screen, utilityProcess } = require('electron');
 const si = require('systeminformation');
@@ -101,6 +102,16 @@ const appInfo = () => ({
   electron: process.versions.electron,
 });
 
+/**
+ * Where reports go. In Windows setup, Benchwise runs as the temporary setup
+ * account (defaultuser0), whose profile is deleted when setup finishes:
+ * reports saved there are lost. Running from the stick's launcher avoids it.
+ */
+function storageInfo() {
+  const dir = settings.reportsDir();
+  return { reportsDir: dir, dataDir: settings.dataDir, temporary: /[\\/]Users[\\/]defaultuser\d+[\\/]/i.test(dir) };
+}
+
 /** Touch support per display, from Chromium's view of the hardware. */
 function touchSupport() {
   try {
@@ -182,7 +193,13 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
-  handle('app:info', async () => ({ ...appInfo(), elevated: await isElevated() }));
+  handle('app:info', async () => ({ ...appInfo(), elevated: await isElevated(), storage: storageInfo() }));
+  // Intake "Done" screen. Shutdown is Windows-only and asks in the UI first.
+  handle('app:quit', () => setTimeout(() => app.quit(), 200));
+  handle('system:shutdown', () => {
+    if (process.platform !== 'win32') throw new Error('Shut down is only available on Windows.');
+    execFile('shutdown', ['/s', '/t', '0'], { windowsHide: true }, () => {});
+  });
   handle('hardware:collect', (force) => getHardware(Boolean(force)));
   handle('drives:check', () => getDriveHealth());
   // Defender scan (definition update + quick scan: minutes). One at a time.
@@ -201,7 +218,8 @@ function registerIpc() {
     if (!mdmPromise) {
       mdmPromise = (async () => {
         const s = settings.get();
-        const known = await loadKnownTenants([s.knownTenantsFile, path.join(settings.dataDir, 'KnownTenants.txt')]);
+        // BENCHWISE_KNOWN_TENANTS: set by the stick launcher's site.cmd (the intake share's list).
+        const known = await loadKnownTenants([process.env.BENCHWISE_KNOWN_TENANTS, s.knownTenantsFile, path.join(settings.dataDir, 'KnownTenants.txt')]);
         const result = await runMdmCheck({
           known: known.map,
           onProgress: (p) => mainWindow?.webContents.send('mdm:progress', p),
@@ -244,8 +262,18 @@ function registerIpc() {
     const hw = lastHardware || (await getHardware());
     const hardware = { ...hw, ...(lastDriveHealth && { driveHealth: lastDriveHealth }), ...((lastMdm || lastMalware) && { intake: { mdm: lastMdm, malware: lastMalware } }) };
     const audit = buildAudit({ input: input || {}, hardware, settings: settings.get(), app: appInfo() });
-    const saved = await store.save(audit);
-    return { ...saved, overall: audit.overall, id: audit.id };
+    try {
+      const saved = await store.save(audit);
+      return { ...saved, overall: audit.overall, id: audit.id };
+    } catch (err) {
+      // The reports folder (often a network share) failed: keep the record on
+      // the stick / local data folder instead, like the intake toolkit's
+      // offline backup. Never lose a result.
+      const local = path.join(settings.dataDir, 'reports');
+      if (path.resolve(store.dir) === path.resolve(local)) throw err;
+      const saved = await new ReportStore(() => local, renderPdf).save(audit);
+      return { ...saved, overall: audit.overall, id: audit.id, fallback: { failedDir: store.dir, reason: err.message } };
+    }
   });
 
   handle('keyboard:capture', (on) => {
@@ -423,7 +451,31 @@ async function runUiCheck() {
     js(`(() => { const b = [...document.querySelectorAll('.nav-item')].find(b => b.textContent.startsWith(${JSON.stringify(label)})); if (!b) throw new Error('nav not found: ${label}'); b.click(); })()`);
 
   await new Promise((r) => mainWindow.webContents.once('did-finish-load', r));
-  for (let i = 0; i < 60 && !(await js(`!!document.querySelector('.cards')`)); i++) await wait(500);
+  // Normally the Overview; in Windows setup the intake flow opens the MDM page.
+  for (let i = 0; i < 60 && !(await js(`!!document.querySelector('.cards, .mdm-check')`)); i++) await wait(500);
+  if (await js(`!!document.querySelector('.profile-switch')`)) {
+    // Intake (OOBE or BENCHWISE_ENV_MODE=oobe): both checks run by themselves,
+    // then the summary opens. Then switch to the full audit for the rest.
+    await shot('0a-intake-start');
+    const onSummary = `document.querySelector('h1')?.textContent === 'Intake summary'`;
+    for (let i = 0; i < 400 && !(await js(onSummary)); i++) await wait(500);
+    await wait(500);
+    await shot('0c-intake-summary');
+    if (!(await js(onSummary))) errors.push('intake: the summary never opened');
+    // Save the intake record (no asset tag: named by serial), then the Done buttons.
+    await js(`[...document.querySelectorAll('button')].find(b => b.textContent === 'Save report')?.click()`);
+    for (let i = 0; i < 40 && !(await js(`!!document.querySelector('.card.saved')`)); i++) await wait(250);
+    await js(`document.querySelector('.card.saved')?.scrollIntoView()`);
+    await wait(300);
+    await shot('0d-intake-saved');
+    if (!(await js(`[...document.querySelectorAll('.done-actions button')].map(b => b.textContent).join('|') === 'Shut down|Exit to Windows setup'`))) {
+      errors.push('intake: Shut down / Exit buttons missing after save');
+    }
+    await js(`[...document.querySelectorAll('button')].find(b => b.textContent === 'Run the full audit →')?.click()`);
+    await wait(600);
+    await click('System Overview');
+    for (let i = 0; i < 20 && !(await js(`!!document.querySelector('.cards')`)); i++) await wait(500);
+  }
   await wait(500); // let a hidden window repaint before capture (Windows serves stale frames otherwise)
   await shot('1-overview');
   await js(`document.getElementById('assetTagInput').value='TEST-001'; document.getElementById('assetTagInput').dispatchEvent(new Event('input'))`);

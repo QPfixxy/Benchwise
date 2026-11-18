@@ -100,3 +100,21 @@ test('PDF shows the Drive Health section and prefers it for the storage SMART co
   const plain = await renderReportHtml(buildAudit({ input: { assetTag: 'TAG-4', tests: {} }, hardware, settings, app }));
   assert.ok(!plain.includes('Drive health'), 'no section when the test was not run');
 });
+
+test('no asset tag: the record is keyed and named on the serial; intake profile keeps only its tests', async () => {
+  const { store } = tmpStore();
+  const a = buildAudit({
+    input: { assetTag: '', profile: 'intake', tests: { mdm: { status: 'pass' }, malware: { status: 'pass' }, keyboard: { status: 'fail' } } },
+    hardware: { ...hardware, system: { ...hardware.system, serial: 'ABC 123/X' } },
+    settings: { ...settings, enabledTests: { ...settings.enabledTests, mdm: true, malware: true, keyboard: true } },
+    app,
+  });
+  assert.equal(a.assetTag, null);
+  assert.equal(a.serial, 'ABC 123/X');
+  assert.equal(a.profile, 'intake');
+  assert.deepEqual(Object.keys(a.tests).sort(), ['malware', 'mdm']);
+  assert.equal(a.overall, 'pass', 'the keyboard failure is outside the intake profile');
+  const saved = await store.save(a);
+  assert.match(saved.file, /^ABC-123-X_\d{8}-\d{6}$/, 'serial made safe for a file name');
+  assert.throws(() => buildAudit({ input: { assetTag: '' }, hardware, settings: { ...settings, assetTagRequired: true }, app }), /required/);
+});

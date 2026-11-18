@@ -88,6 +88,11 @@ code { font: 0.92em ui-monospace, Menlo, Consolas, monospace; }
 .nav-item > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-item.active { background: var(--accent); color: var(--accent-text); }
 .nav-item.active .badge { background: rgba(255, 255, 255, 0.2); color: inherit; }
+/* Intake / Full audit switch (shown during Windows setup) */
+.profile-switch { display: flex; gap: 2px; margin: 10px 0 2px; padding: 3px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.profile-switch .seg { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 6px 4px; border-radius: calc(var(--radius) - 3px); font: inherit; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
+.profile-switch .seg:hover { color: var(--text); }
+.profile-switch .seg.active { background: var(--accent); color: var(--accent-text); }
 .sidebar-foot { margin-top: auto; padding: 10px; font-size: 0.75rem; color: var(--muted); }
 
 main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
@@ -281,3 +286,10 @@ table.grid { width: 100%; border-collapse: collapse; font-size: 0.9em; margin: 6
 .port-status.warn { border-color: var(--warn); background: var(--warn-bg); }
 details.prepare { margin-top: 16px; max-width: 760px; }
 details.prepare summary { cursor: pointer; font-weight: 600; }
+
+/* Intake summary tiles */
+.intake-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; max-width: 760px; margin-bottom: 14px; }
+.intake-tile { margin: 0; max-width: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.intake-tile:hover { filter: brightness(1.08); }
+.intake-tile strong { font-size: 1.15rem; }
+.done-actions { margin-top: 12px; }

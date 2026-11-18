@@ -16,3 +16,9 @@ Thumbs.db
 # CI artifacts dropped in for review
 /ingest/
 /vendor/
+
+# Stick launcher: site secrets and Wi-Fi profile stay on the sticks
+/stick/site.cmd
+/stick/wifi.xml
+/stick/WiFi_Drivers/
+/stick/benchwise-data/

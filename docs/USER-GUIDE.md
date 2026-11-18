@@ -11,6 +11,39 @@ For testers, and for whoever sets Benchwise up at a site.
 
 The CPU and memory stress tests run in the background. You can do other tests while they run, and their verdicts are recorded automatically when they finish.
 
+## Intake during Windows setup (OOBE)
+
+Run on a unit still at the Windows setup screens, Benchwise goes straight into **Intake checks** with no questions:
+
+1. The **malware scan** starts in the background (it's the slow one, about 3 minutes).
+2. The **MDM / Autopilot** check runs (30–60 seconds).
+3. When both are done, the **Intake summary** shows one tile per check. Click a tile to open that test, for example to record your decision on a ghost profile.
+4. **Save report**, then **Shut down** or **Exit to Windows setup**.
+
+The switch at the top of the sidebar changes between **Intake checks** and the **Full audit**. Results are kept, so you can run the full hardware audit in the same session. The asset tag is optional: records are named and identified by the manufacturer serial. Turn on **Require an asset tag to save** in Settings if your shop wants one.
+
+### The USB stick
+
+Unzip the **`Benchwise-<version>-win-x64.zip`** release file into a `Benchwise` folder on a USB stick. In OOBE, press Shift+F10 and run:
+
+```
+D:\Benchwise\BENCHWISE
+```
+
+(use the stick's drive letter). The launcher:
+- joins Wi-Fi from a `wifi.xml` profile;
+- waits for the network. If there's none, it offers to retry (e.g. after plugging in Ethernet), to install Wi-Fi drivers from a `WiFi_Drivers` folder, or to start anyway;
+- connects your share;
+- keeps settings and reports in `benchwise-data` on the stick, then starts Benchwise.
+
+On a read-only disc, reports go to `C:\Users\Public\benchwise-data` instead. They must never go to Windows setup's temporary account, which is deleted when setup finishes, and Benchwise warns you if they would.
+
+Your site's details go in **`site.cmd`** next to the launcher: copy `site.example.cmd` and fill it in.
+- **Wi-Fi name**, and the host that must answer before testing starts.
+- **The share and its account**, used for saving reports and reading `KnownTenants.txt`. If the share can't be reached, the report is kept on the stick.
+
+`site.cmd` holds passwords: keep it on your sticks only.
+
 ## Which tests apply
 
 Benchwise only offers tests that make sense for the unit:
