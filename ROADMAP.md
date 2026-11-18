@@ -164,6 +164,7 @@ A self-hosted server for a site, quick to deploy, that every bench and Benchwise
 **Fleet updates for benches and USB sticks**
 - The Hub hosts approved Benchwise releases. Stations update from it, never straight from the internet, so a site can pin, stage or roll back a version.
 - Plugging a Benchwise USB stick (portable app or live-USB image) into any enrolled station or the Hub checks it and brings it up to the approved version: app, test profiles and settings. The stick's version is recorded in every audit it produces.
+- **Universal sticks (later):** the server's stick maker writes one stick that runs Benchwise on Windows, Linux and macOS clients, with the same site settings and station key. Today it writes the Windows build only. Details: [docs/hub/DESIGN.md](docs/hub/DESIGN.md), Phase C.
 - Pushes test profiles, asset tag rules and enabled tests to every bench, so the whole site runs the same procedure.
 
 **Site policy and intake data**

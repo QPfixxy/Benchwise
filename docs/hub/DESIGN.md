@@ -145,6 +145,10 @@ Upgrades: run the new installer, or approve a version at the Hub and the site se
 
 **Phase C: later**
 - The **Stick Maker / manager app** for lead PCs: records, exports, sticks.
+- **One stick for every client OS:** a stick made by any site server (Ubuntu or Windows) that carries Benchwise for Windows, Linux and macOS together, with a launcher for each and the same site settings and station key. The stick maker today writes the Windows build only. Points to settle:
+  - a filesystem all three can read and run from (exFAT works everywhere, but macOS and Linux need the executable bit, which exFAT doesn't keep: launch through a script);
+  - stick size (three builds, about 1.2 GB);
+  - one station key per stick, whichever OS it runs on.
 - Sign-in with Entra ID and Active Directory.
 - Fleet updates: the Hub serves approved Benchwise versions to sites and sticks.
 - Webhooks and database views for the WMS if its integration needs them.
