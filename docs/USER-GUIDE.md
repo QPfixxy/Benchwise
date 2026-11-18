@@ -18,7 +18,7 @@ Run on a unit still at the Windows setup screens, Benchwise goes straight into *
 1. The **malware scan** starts in the background (it's the slow one, about 3 minutes).
 2. The **MDM / Autopilot** check runs (30–60 seconds).
 3. When both are done, the **Intake summary** shows one tile per check. Click a tile to open that test, for example to record your decision on a ghost profile.
-4. **Save report**, then **Shut down** or **Exit to Windows setup**.
+4. **The report saves itself** when both checks have a result and it's going to the stick or your share. Otherwise, for example while a ghost profile waits for your decision, click **Save report**. Then **Shut down** or **Exit to Windows setup**. Auto-save can be turned off in Settings.
 
 The switch at the top of the sidebar changes between **Intake checks** and the **Full audit**. Results are kept, so you can run the full hardware audit in the same session. The asset tag is optional: records are named and identified by the manufacturer serial. Turn on **Require an asset tag to save** in Settings if your shop wants one.
 
@@ -27,7 +27,7 @@ The switch at the top of the sidebar changes between **Intake checks** and the *
 Unzip the **`Benchwise-<version>-win-x64.zip`** release file into a `Benchwise` folder on a USB stick. In OOBE, press Shift+F10 and run:
 
 ```
-D:\Benchwise\BENCHWISE
+D:\Benchwise\LAUNCH
 ```
 
 (use the stick's drive letter). The launcher:
@@ -36,9 +36,9 @@ D:\Benchwise\BENCHWISE
 - connects your share;
 - keeps settings and reports in `benchwise-data` on the stick, then starts Benchwise.
 
-On a read-only disc, reports go to `C:\Users\Public\benchwise-data` instead. They must never go to Windows setup's temporary account, which is deleted when setup finishes, and Benchwise warns you if they would.
+On a read-only disc, reports go to `C:\Users\Public\benchwise-data`, but that's the unit's own disk, so Benchwise warns you to copy them off before the unit is wiped, and doesn't auto-save there. Reports never go to Windows setup's temporary account, which is deleted when setup finishes.
 
-Your site's details go in **`site.cmd`** next to the launcher: copy `site.example.cmd` and fill it in.
+Your site's details go in **`site.cmd`** next to `LAUNCH.CMD`: copy `site.example.cmd` and fill it in.
 - **Wi-Fi name**, and the host that must answer before testing starts.
 - **The share and its account**, used for saving reports and reading `KnownTenants.txt`. If the share can't be reached, the report is kept on the stick.
 
@@ -161,3 +161,5 @@ The JSON is a versioned record (`"schema": "qudit.audit"`, `"schemaVersion": 1`)
 - every test result with its measured details;
 - the technician, station, app version and timestamps;
 - `hardware.diagnostics`: how long each hardware check took. If a unit scans slowly or incompletely, send this file with the bug report.
+
+**No personal data:** reports leave the bench (shares, clients, reporting tools), so they don't record the Windows account name or the computer name. In malware findings, a user folder in a file location is replaced with `<user>`. They do record the unit's identity: serial, UUID and MAC addresses, plus the technician field you enter.

@@ -117,7 +117,6 @@ function normalizeSystem({ system = {}, chassis = {}, baseboard = {}, bios = {},
       distro: realValue(osInfo.distro),
       release: realValue(osInfo.release),
       arch: osInfo.arch || null,
-      hostname: osInfo.hostname || null,
     },
   };
 }

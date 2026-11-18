@@ -18,6 +18,9 @@ const DEFAULTS = Object.freeze({
   assetTagPattern: '',
   // Off by default: records are keyed on the manufacturer serial.
   assetTagRequired: false,
+  // Intake: save the report by itself when both checks have a verdict and
+  // the report goes to the stick or a share.
+  intakeAutoSave: true,
   reportsDir: '', // empty = <data dir>/reports
   // MDM / Autopilot test. KnownTenants.txt is client data: it lives on the
   // intake share or the stick, never in the app. Empty = <data dir>/KnownTenants.txt.
@@ -53,6 +56,17 @@ function resolveDataDir(app) {
     }
   }
   if (process.env.PORTABLE_EXECUTABLE_DIR || fs.existsSync(portable)) return portable;
+  // Started straight from a stick in Windows setup (not via the launcher):
+  // keep the data on the stick. Windows setup's temporary account, where
+  // userData would be, is deleted when setup finishes.
+  if (process.platform === 'win32' && isSetupAccount() && offSystemDrive(exeDir)) {
+    try {
+      fs.mkdirSync(portable, { recursive: true });
+      return portable;
+    } catch {
+      /* read-only: fall through; Benchwise warns before saving */
+    }
+  }
   const userData = app.getPath('userData');
   migrateLegacyUserData(path.join(app.getPath('appData'), 'Qudit'), userData);
   return userData;
@@ -126,6 +140,7 @@ function sanitize(v) {
     assetTagLabel: str(v.assetTagLabel, 40) || DEFAULTS.assetTagLabel,
     assetTagPattern: str(v.assetTagPattern, 200),
     assetTagRequired: v.assetTagRequired === true,
+    intakeAutoSave: v.intakeAutoSave !== false,
     reportsDir: str(v.reportsDir, 1024),
     knownTenantsFile: str(v.knownTenantsFile, 1024),
     mdmLockedFails: v.mdmLockedFails !== false,
@@ -134,4 +149,68 @@ function sanitize(v) {
   };
 }
 
-module.exports = { Settings, resolveDataDir, migrateLegacyUserData, TEST_IDS, DEFAULTS };
+/** Windows' temporary setup (OOBE) account: defaultuser0, defaultuser100000... */
+function isSetupAccount(user) {
+  let name = user;
+  if (name === undefined) {
+    try {
+      name = require('node:os').userInfo().username;
+    } catch {
+      name = '';
+    }
+  }
+  return /^defaultuser\d+$/i.test(name || '');
+}
+
+/** True for a Windows path on a drive other than the system drive (e.g. a USB stick). */
+function offSystemDrive(dir, systemDrive = process.env.SystemDrive || 'C:') {
+  const m = /^([A-Za-z]:)/.exec(String(dir || ''));
+  return Boolean(m) && m[1].toUpperCase() !== String(systemDrive).toUpperCase();
+}
+
+/**
+ * Is the data folder on the stick Benchwise runs from? Either the launcher
+ * said so, or the data folder sits next to the exe on a non-system drive and
+ * can be written to.
+ */
+function detectStick({ dataDir, exeDir, envFlag = process.env.BENCHWISE_ON_STICK, platform = process.platform, canWrite = writable } = {}) {
+  if (envFlag === '1') return true;
+  if (platform !== 'win32' || !dataDir || !exeDir) return false;
+  const p = path.win32; // Windows rules, whatever this code runs on (tests)
+  const nextToExe = p.resolve(dataDir).toLowerCase() === p.resolve(exeDir, 'benchwise-data').toLowerCase();
+  return nextToExe && offSystemDrive(exeDir) && canWrite(dataDir);
+}
+
+function writable(dir) {
+  const probe = path.join(dir, `.write-test-${process.pid}`);
+  try {
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where reports are going, for intake (Windows setup):
+ *   share      a network path: survives anything
+ *   stick      the launcher confirmed a writable USB stick holds the data folder
+ *   temporary  Windows setup's temporary account: deleted when setup finishes
+ *   local      this unit's own disk (an installed copy, or the read-only
+ *              fallback): erased when the unit is wiped
+ * Only share and stick are safe enough to auto-save to.
+ */
+function classifyStorage(reportsDir, { dataDir, onStick = false } = {}) {
+  const dir = String(reportsDir || '');
+  if (/^(\\\\|\/\/)[^\\/]+[\\/]/.test(dir)) return 'share';
+  if (/[\\/]Users[\\/]defaultuser\d+[\\/]/i.test(dir)) return 'temporary';
+  const inside = (child, parent) => {
+    const rel = path.relative(path.resolve(parent), path.resolve(child));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  };
+  if (onStick && dataDir && inside(dir, dataDir)) return 'stick';
+  return 'local';
+}
+
+module.exports = { Settings, resolveDataDir, migrateLegacyUserData, classifyStorage, detectStick, offSystemDrive, isSetupAccount, TEST_IDS, DEFAULTS };

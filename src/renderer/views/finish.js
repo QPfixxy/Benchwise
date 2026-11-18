@@ -29,14 +29,43 @@ function intakeTiles(s, tests, navigate) {
 }
 
 /** Save location problems, shown before the technician saves. */
-function storageWarnings(info) {
+function storageWarnings(info, setup) {
   const st = info?.storage;
-  if (!st?.temporary) return null;
-  return el(
-    'div',
-    { class: 'notice warn' },
-    el('strong', {}, 'Reports would be lost'),
-    el('p', {}, `Reports are set to save in Windows' temporary setup account (${st.reportsDir}), which is deleted when setup finishes. Start Benchwise from the stick's BENCHWISE launcher, or set a reports folder (e.g. your share) in Settings.`),
+  if (st?.kind === 'temporary') {
+    return el(
+      'div',
+      { class: 'notice warn' },
+      el('strong', {}, 'Reports would be lost'),
+      el('p', {}, `Reports are set to save in Windows' temporary setup account (${st.reportsDir}), which is deleted when setup finishes. Start Benchwise from the stick (its LAUNCH launcher), or set a reports folder (e.g. your share) in Settings.`),
+    );
+  }
+  if (setup && st?.kind === 'local') {
+    return el(
+      'div',
+      { class: 'notice warn' },
+      el('strong', {}, "Reports are on this unit's own disk"),
+      el('p', {}, `They're saved in ${st.reportsDir}, which is erased when this unit is wiped: copy them off first. Running from a writable stick, or with a share set in site.cmd, keeps them safe (and saves them automatically).`),
+    );
+  }
+  return null;
+}
+
+/**
+ * Intake auto-save: only when nothing is left to decide and the report goes
+ * somewhere that outlives the unit (the stick or a share).
+ */
+function autoSaveReady(ctx, tests, tagError) {
+  const s = ctx.state.session;
+  const kind = ctx.state.info?.storage?.kind;
+  return (
+    s.profile === 'intake' &&
+    ctx.state.settings?.intakeAutoSave !== false &&
+    !s.autoSaved &&
+    !tagError &&
+    Boolean(ctx.state.hardware) &&
+    (kind === 'stick' || kind === 'share') &&
+    tests.length > 0 &&
+    tests.every((t) => (s.tests[t.id]?.status || 'untested') !== 'untested')
   );
 }
 
@@ -63,11 +92,15 @@ export default {
       const key = JSON.stringify([tests.map((t) => [t.id, s.tests[t.id]?.status, summarize(s.tests[t.id]?.details), s.tests[t.id]?.notes]), tagError, saving, Boolean(ctx.state.hardware)]);
       if (key === lastKey) return;
       lastKey = key;
-      const saveBtn = el('button', { class: 'btn primary big', disabled: Boolean(tagError) || saving, onclick: save }, saving ? 'Saving…' : 'Save report');
+      const saveBtn = el('button', { class: 'btn primary big', disabled: Boolean(tagError) || saving, onclick: () => save() }, saving ? 'Saving…' : 'Save report');
+      if (!saving && autoSaveReady(ctx, tests, tagError)) {
+        s.autoSaved = true; // once per unit; saving again by hand still works
+        queueMicrotask(() => save(true));
+      }
       const intake = s.profile === 'intake';
 
       fill(body,
-        storageWarnings(ctx.state.info),
+        storageWarnings(ctx.state.info, inSetup()),
         intake ? intakeTiles(s, tests, ctx.navigate) : null,
         intake ? null : el(
           'table',
@@ -104,7 +137,7 @@ export default {
       );
     };
 
-    async function save() {
+    async function save(auto = false) {
       saving = true;
       draw();
       try {
@@ -124,7 +157,7 @@ export default {
           el(
             'div',
             { class: 'card saved' },
-            el('h2', {}, 'Report saved ', statusBadge(res.overall)),
+            el('h2', {}, auto ? 'Saved automatically ' : 'Report saved ', statusBadge(res.overall)),
             res.fallback
               ? el('p', { class: 'warn-text' }, `Couldn't save to ${res.fallback.failedDir} (${res.fallback.reason}). Saved here instead, so nothing is lost:`)
               : null,
@@ -140,7 +173,7 @@ export default {
             inSetup() ? doneButtons(ctx) : null,
           ),
         );
-        toast('Report saved', 'success');
+        toast(auto ? 'Intake report saved automatically' : 'Report saved', 'success');
       } catch (err) {
         toast(`Save failed: ${err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`, 'error');
       } finally {

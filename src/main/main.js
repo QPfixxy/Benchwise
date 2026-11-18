@@ -18,7 +18,7 @@ const { checkDrives } = require('./drives/smartctl');
 const { runMdmCheck, loadKnownTenants, mdmVerdict } = require('./intake/mdm');
 const { runDefenderScan, malwareVerdict } = require('./intake/defender');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
-const { Settings, resolveDataDir } = require('./settings');
+const { Settings, resolveDataDir, classifyStorage, detectStick } = require('./settings');
 const { ReportStore, buildAudit } = require('./reports/store');
 const { renderReportHtml } = require('./reports/template');
 
@@ -62,6 +62,7 @@ let hardwarePromise = null;
 let keyboardCapture = false;
 let stress = null;
 let lastDriveHealth = null;
+let onStick = null; // decided once: is the data folder on the stick we run from?
 let lastMdm = null;
 let mdmPromise = null;
 let lastMalware = null;
@@ -109,7 +110,9 @@ const appInfo = () => ({
  */
 function storageInfo() {
   const dir = settings.reportsDir();
-  return { reportsDir: dir, dataDir: settings.dataDir, temporary: /[\\/]Users[\\/]defaultuser\d+[\\/]/i.test(dir) };
+  onStick ??= detectStick({ dataDir: settings.dataDir, exeDir: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')) });
+  const kind = classifyStorage(dir, { dataDir: settings.dataDir, onStick });
+  return { reportsDir: dir, dataDir: settings.dataDir, kind, temporary: kind === 'temporary' };
 }
 
 /** Touch support per display, from Chromium's view of the hardware. */
@@ -462,8 +465,12 @@ async function runUiCheck() {
     await wait(500);
     await shot('0c-intake-summary');
     if (!(await js(onSummary))) errors.push('intake: the summary never opened');
-    // Save the intake record (no asset tag: named by serial), then the Done buttons.
-    await js(`[...document.querySelectorAll('button')].find(b => b.textContent === 'Save report')?.click()`);
+    // Save the intake record (no asset tag: named by serial), then the Done
+    // buttons. On a stick or share it has already saved itself.
+    for (let i = 0; i < 12 && !(await js(`!!document.querySelector('.card.saved')`)); i++) await wait(250);
+    if (!(await js(`!!document.querySelector('.card.saved')`))) {
+      await js(`[...document.querySelectorAll('button')].find(b => b.textContent === 'Save report')?.click()`);
+    }
     for (let i = 0; i < 40 && !(await js(`!!document.querySelector('.card.saved')`)); i++) await wait(250);
     await js(`document.querySelector('.card.saved')?.scrollIntoView()`);
     await wait(300);

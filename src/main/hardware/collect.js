@@ -388,7 +388,8 @@ async function collectHardware() {
     battery,
     network,
     usb: n.normalizeUsb(raw.usb),
-    host: { hostname: os.hostname(), uptimeSeconds: Math.round(os.uptime()) },
+    // No computer name: it's often a person's name (e.g. JOHNS-LAPTOP).
+    host: { uptimeSeconds: Math.round(os.uptime()) },
     capabilities: { lidClosed: await lidClosed() },
     environment,
     security,

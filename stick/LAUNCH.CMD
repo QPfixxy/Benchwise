@@ -2,12 +2,13 @@
 rem ===================================================================
 rem  Benchwise USB stick launcher
 rem
-rem  In Windows setup (OOBE): press Shift+F10, go to the stick's drive and
-rem  run BENCHWISE. It joins Wi-Fi, waits for the network, connects your
+rem  In Windows setup (OOBE): press Shift+F10 and run LAUNCH from the
+rem  stick's Benchwise folder (e.g. F:\Benchwise\LAUNCH). It joins Wi-Fi, waits for the network, connects your
 rem  share, keeps settings and reports on the stick, then starts Benchwise.
 rem
 rem  Site settings and passwords live in site.cmd next to this file (copy
-rem  site.example.cmd). Optional: wifi.xml (an exported Wi-Fi profile) and a
+rem  site.example.cmd). It's not called BENCHWISE.CMD because typing
+rem  BENCHWISE would start Benchwise.exe instead (.EXE wins over .CMD). Optional: wifi.xml (an exported Wi-Fi profile) and a
 rem  WiFi_Drivers folder (.inf drivers) for units with no Wi-Fi driver.
 rem ===================================================================
 setlocal EnableExtensions EnableDelayedExpansion
@@ -21,16 +22,20 @@ if exist "%~dp0site.cmd" call "%~dp0site.cmd"
 if not defined CHECK_HOST set "CHECK_HOST=8.8.8.8"
 
 rem Settings and reports stay on the stick. If it's read-only (a CD/ISO),
-rem use the unit's public folder: Windows setup's temporary account is
-rem deleted when setup finishes, and anything saved in it with it.
+rem use the unit's public folder rather than Windows setup's temporary
+rem account (deleted when setup finishes). Benchwise warns that the public
+rem folder is on the unit's own disk, and won't auto-save there.
 set "BENCHWISE_DATA_DIR=%~dp0benchwise-data"
 if not exist "%BENCHWISE_DATA_DIR%" mkdir "%BENCHWISE_DATA_DIR%" >nul 2>&1
 (echo.>"%BENCHWISE_DATA_DIR%\.write-test") >nul 2>&1
 if exist "%BENCHWISE_DATA_DIR%\.write-test" (
   del "%BENCHWISE_DATA_DIR%\.write-test" >nul 2>&1
+  rem Tells Benchwise its reports are safe on the stick (enables auto-save).
+  set "BENCHWISE_ON_STICK=1"
 ) else (
   set "BENCHWISE_DATA_DIR=%PUBLIC%\benchwise-data"
   echo NOTE: the stick is read-only. Reports go to !BENCHWISE_DATA_DIR!
+  echo       That is on this unit's own disk: copy them off before it is wiped.
 )
 
 :connect

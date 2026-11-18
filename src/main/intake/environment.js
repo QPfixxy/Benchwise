@@ -85,20 +85,22 @@ async function detectRaw({ platform = process.platform, read = readKey, readFile
     const pick = (o, keys) => (o ? Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]])) : null);
     return {
       mode: classifyWindows({ setup, status, miniNt, username, consoleUser: onConsole }),
+      // Evidence only says WHETHER the accounts are Windows' setup account:
+      // account names are personal data and don't belong in reports.
       evidence: {
         setup: pick(setup, ['OOBEInProgress', 'SystemSetupInProgress', 'SetupType', 'SetupPhase', 'SetupShutdownRequired']),
         status: pick(status, ['AuditBoot', 'ChildCompletion']),
         miniNt: Boolean(miniNt),
-        username,
-        consoleUser: onConsole,
+        setupAccount: SETUP_USER.test(username || ''),
+        consoleSetupAccount: SETUP_USER.test(onConsole || ''),
       },
     };
   }
   if (platform === 'linux') {
     const cmdline = await readFile('/proc/cmdline', 'utf8').catch(() => '');
-    return { mode: classifyLinux(cmdline), evidence: { cmdline: cmdline.trim().slice(0, 300), username } };
+    return { mode: classifyLinux(cmdline), evidence: { liveBoot: classifyLinux(cmdline) === 'live' } };
   }
-  return { mode: platform === 'darwin' ? 'macos' : platform, evidence: { username } };
+  return { mode: platform === 'darwin' ? 'macos' : platform, evidence: {} };
 }
 
 module.exports = { detectEnvironment, classifyWindows, classifyLinux, parseQueryUser };

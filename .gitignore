@@ -22,3 +22,8 @@ Thumbs.db
 /stick/wifi.xml
 /stick/WiFi_Drivers/
 /stick/benchwise-data/
+
+# Saved audit reports, wherever they end up: never commit (client and unit data)
+**/benchwise-data/
+*_2[0-9][0-9][0-9][01][0-9][0-3][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].json
+*_2[0-9][0-9][0-9][01][0-9][0-3][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].pdf

@@ -81,7 +81,7 @@ src/
     views/                overview, finish, reports, settings
     tests/                one module per functional test
 test/                     node:test unit tests
-stick/                    USB stick launcher (BENCHWISE.CMD, site.example.cmd), shipped next to Benchwise.exe
+stick/                    USB stick launcher (LAUNCH.CMD, site.example.cmd), shipped next to Benchwise.exe
 scripts/
   electron.js             launcher (clears ELECTRON_RUN_AS_NODE)
   vendor-smartctl.js      fetches and builds the bundled smartctl

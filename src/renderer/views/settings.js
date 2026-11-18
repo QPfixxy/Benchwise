@@ -115,6 +115,13 @@ export default {
             'Malware found fails the audit',
           ),
           el('p', { class: 'muted small' }, 'Off: threats are documented in the report but the unit passes this test (it gets wiped and reinstalled anyway).'),
+          el(
+            'label',
+            { class: 'check' },
+            el('input', { type: 'checkbox', checked: s.intakeAutoSave !== false, onchange: (e) => (s.intakeAutoSave = e.target.checked) }),
+            'Save intake reports automatically',
+          ),
+          el('p', { class: 'muted small' }, 'Only when both checks have a result (no ghost profile or unconfirmed result waiting for you) and the report goes to the stick or a share.'),
         ),
         el(
           'section',

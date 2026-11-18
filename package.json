@@ -70,7 +70,7 @@
           "from": "stick",
           "to": ".",
           "filter": [
-            "BENCHWISE.CMD",
+            "LAUNCH.CMD",
             "site.example.cmd"
           ]
         }

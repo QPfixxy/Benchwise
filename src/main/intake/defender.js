@@ -82,12 +82,19 @@ Emit @{ event = 'result'; data = $r }
 
 const SEVERITY = { 0: 'Unknown', 1: 'Low', 2: 'Moderate', 4: 'High', 5: 'Severe' };
 
+// Threat locations are evidence, but C:\Users\<name>\... can hold a previous
+// owner's account name. Keep the path, drop the name (setup accounts stay:
+// they aren't personal).
+function redactUser(location) {
+  return String(location).replace(/([\\/]Users[\\/])(?!defaultuser\d+[\\/]|Public[\\/]|Default[\\/])[^\\/]+/gi, '$1<user>');
+}
+
 /** Pure: raw script output -> scan result (v1 rules: any detection = infected). */
 function interpretScan(data) {
   if (!data || data.available === false) {
     return { status: 'unavailable', message: data?.error ? `Microsoft Defender isn't available: ${data.error}` : "Microsoft Defender isn't available on this device.", threats: [] };
   }
-  const threats = (data.threats || []).map((t) => ({ ...t, severity: SEVERITY[t.severityId] || null }));
+  const threats = (data.threats || []).map((t) => ({ ...t, resources: (t.resources || []).map(redactUser), severity: SEVERITY[t.severityId] || null }));
   const files = data.filesScanned != null ? Number(String(data.filesScanned).replace(/[,.]/g, '')) : null;
   const result = {
     status: threats.length ? 'infected' : 'clean',
@@ -174,4 +181,4 @@ function runDefenderScan({ onProgress = () => {}, spawnFn = spawn, timeoutMs = 4
   });
 }
 
-module.exports = { runDefenderScan, interpretScan, malwareVerdict, SCRIPT };
+module.exports = { runDefenderScan, interpretScan, malwareVerdict, redactUser, SCRIPT };

@@ -2,14 +2,14 @@
 rem ===================================================================
 rem  Site settings for the Benchwise stick launcher.
 rem
-rem  Copy this file to site.cmd (next to BENCHWISE.CMD) and fill it in.
+rem  Copy this file to site.cmd (next to LAUNCH.CMD) and fill it in.
 rem  site.cmd holds your Wi-Fi name and share password: keep it on your
 rem  sticks only, never in a repository.
 rem ===================================================================
 
 rem Wi-Fi. Export a profile on any PC that knows the network:
 rem   netsh wlan export profile name="YourNetwork" key=clear folder=.
-rem then rename the file to wifi.xml and put it next to BENCHWISE.CMD.
+rem then rename the file to wifi.xml and put it next to LAUNCH.CMD.
 set "WIFI_NAME=YourNetwork"
 
 rem Must answer before testing starts: 8.8.8.8, or your server's address.

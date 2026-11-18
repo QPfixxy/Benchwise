@@ -34,3 +34,32 @@ test('a data folder with only the old settings file name still loads', () => {
   s.update({ stationName: 'B2' });
   assert.ok(fs.existsSync(path.join(dir, 'benchwise-settings.json')));
 });
+
+test('storage classification: only the stick and shares are safe to auto-save to', () => {
+  const { classifyStorage } = require('../src/main/settings');
+  const stick = '/Volumes/STICK/Benchwise/benchwise-data';
+  assert.equal(classifyStorage('\\\\server\\AutopilotLogs\\Benchwise'), 'share');
+  assert.equal(classifyStorage('//server/share/reports'), 'share');
+  assert.equal(classifyStorage('C:\\Users\\defaultuser0\\AppData\\Roaming\\Benchwise\\reports'), 'temporary');
+  assert.equal(classifyStorage(`${stick}/reports`, { dataDir: stick, onStick: true }), 'stick');
+  assert.equal(classifyStorage(`${stick}/reports`, { dataDir: stick }), 'local', 'not confirmed by the launcher');
+  assert.equal(classifyStorage('/elsewhere/reports', { dataDir: stick, onStick: true }), 'local', 'reports folder outside the stick');
+  assert.equal(classifyStorage('C:\\Users\\Public\\benchwise-data\\reports'), 'local', "the read-only fallback is the unit's own disk");
+});
+
+test('running straight from a stick (no launcher) is still recognised as the stick', () => {
+  const { detectStick, offSystemDrive, isSetupAccount } = require('../src/main/settings');
+  const yes = () => true;
+  assert.equal(offSystemDrive('F:\\Benchwise', 'C:'), true);
+  assert.equal(offSystemDrive('c:\\Program Files\\Benchwise', 'C:'), false);
+  assert.equal(offSystemDrive('/Volumes/STICK', 'C:'), false);
+  assert.equal(isSetupAccount('defaultuser0'), true);
+  assert.equal(isSetupAccount('defaultuser100000'), true);
+  assert.equal(isSetupAccount('tech'), false);
+  const win = (o) => detectStick({ platform: 'win32', canWrite: yes, envFlag: undefined, ...o });
+  assert.equal(win({ dataDir: 'F:\\Benchwise\\benchwise-data', exeDir: 'F:\\Benchwise' }), true);
+  assert.equal(win({ dataDir: 'C:\\Benchwise\\benchwise-data', exeDir: 'C:\\Benchwise' }), false, 'system drive is the unit itself');
+  assert.equal(win({ dataDir: 'F:\\Benchwise\\benchwise-data', exeDir: 'F:\\Benchwise', canWrite: () => false }), false, 'read-only');
+  assert.equal(win({ dataDir: 'C:\\Users\\defaultuser0\\AppData\\Roaming\\Benchwise', exeDir: 'F:\\Benchwise' }), false);
+  assert.equal(detectStick({ envFlag: '1' }), true, 'the launcher says so');
+});

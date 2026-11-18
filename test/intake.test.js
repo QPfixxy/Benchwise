@@ -83,7 +83,7 @@ test('detectEnvironment keeps the raw evidence for checking against real units',
   const keys = { 'HKLM\\SYSTEM\\Setup': { OOBEInProgress: 1, SystemSetupInProgress: 1, SetupType: 0, Unrelated: 'x' }, 'HKLM\\SYSTEM\\Setup\\Status': {} };
   const env = await detectEnvironment({ platform: 'win32', read: async (k) => keys[k] || null, user: () => 'defaultuser0', consoleUser: async () => 'defaultuser0' });
   assert.equal(env.mode, 'oobe');
-  assert.deepEqual(env.evidence, { setup: { OOBEInProgress: 1, SystemSetupInProgress: 1, SetupType: 0 }, status: {}, miniNt: false, username: 'defaultuser0', consoleUser: 'defaultuser0' });
+  assert.deepEqual(env.evidence, { setup: { OOBEInProgress: 1, SystemSetupInProgress: 1, SetupType: 0 }, status: {}, miniNt: false, setupAccount: true, consoleSetupAccount: true });
   assert.equal((await detectEnvironment({ platform: 'darwin', user: () => 'x' })).mode, 'macos');
 });
 
@@ -385,4 +385,20 @@ test('the scan script keeps v1 audit-mode settings and never removes anything', 
   assert.match(SCRIPT, /Update-MpSignature/);
   assert.match(SCRIPT, /Start-MpScan -ScanType QuickScan/);
   assert.doesNotMatch(SCRIPT, /Remove-MpThreat|Remove-MpPreference/, 'report only; settings are left in audit mode like v1');
+});
+
+test('privacy: reports never carry account names; threat paths lose the user folder', async () => {
+  const keys = { 'HKLM\\SYSTEM\\Setup': { OOBEInProgress: 0 }, 'HKLM\\SYSTEM\\Setup\\Status': {} };
+  const env = await detectEnvironment({ platform: 'win32', read: async (k) => keys[k] || null, user: () => 'Jane Smith', consoleUser: async () => 'Jane Smith' });
+  assert.equal(env.mode, 'windows');
+  assert.doesNotMatch(JSON.stringify(env), /Jane/);
+  assert.deepEqual([env.evidence.setupAccount, env.evidence.consoleSetupAccount], [false, false]);
+
+  const { redactUser } = require('../src/main/intake/defender');
+  assert.equal(redactUser('file:_C:\\Users\\jsmith\\AppData\\Local\\Temp\\bad.exe'), 'file:_C:\\Users\\<user>\\AppData\\Local\\Temp\\bad.exe');
+  assert.equal(redactUser('file:_C:\\Users\\defaultuser0\\x.exe'), 'file:_C:\\Users\\defaultuser0\\x.exe', 'the setup account is not personal');
+  assert.equal(redactUser('file:_C:\\Users\\Public\\x.exe'), 'file:_C:\\Users\\Public\\x.exe');
+  assert.equal(redactUser('file:_C:\\Program Files\\Bloat\\bloat.exe'), 'file:_C:\\Program Files\\Bloat\\bloat.exe');
+  const r = interpretScan({ ...RAW_CLEAN, threats: [{ name: 'X', severityId: 5, newThisScan: true, resources: ['file:_C:\\Users\\Jane Smith\\Desktop\\x.exe'] }] });
+  assert.doesNotMatch(JSON.stringify(r), /Jane/);
 });
