@@ -239,12 +239,34 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     assert.ok(!JSON.stringify(req).includes('passphrase'), 'the root helper never gets the admin password');
     assert.equal((await pool.query("SELECT role FROM users WHERE username = 'alice'")).rows[0].role, 'admin');
     assert.equal((await pool.query("SELECT name FROM sites WHERE code = 'AUS'")).rows[0].name, 'Austin');
-    assert.deepEqual(await setup.getSetting(pool, 'sticks.wifi'), { ssid: 'FLOOR', password: 'floor-pass-123' });
+    const storedWifi = await setup.getSetting(pool, 'sticks.wifi');
+    assert.deepEqual([storedWifi.ssid, storedWifi.security, storedWifi.password, storedWifi.hidden], ['FLOOR', 'wpa2', 'floor-pass-123', false]);
+    assert.ok(storedWifi.updatedAt);
 
     assert.equal((await app.inject({ url: '/api/v1/setup/status' })).json().needed, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/v1/setup/verify', headers: hdr, payload: { code } })).statusCode, 409, 'the code is spent');
     assert.equal((await app.inject({ url: '/api/v1/setup/environment', headers: { 'x-setup-token': token } })).statusCode, 409);
     fs.writeFileSync(config.statusFile, JSON.stringify({ id: ok.applyId, state: 'done', url: 'https://10.0.0.1/', at: 'now' }));
+
+    // Floor Wi-Fi after setup: admins change it (password never shown or logged);
+    // stations fetch the current profile for their sticks.
+    const login = await app.inject({ method: 'POST', url: '/api/v1/session', payload: { username: 'alice', password: 'a long enough passphrase' } });
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    const adm = { cookie, 'x-benchwise': '1' };
+    const view = (await app.inject({ url: '/api/v1/settings/wifi', headers: { cookie } })).json();
+    assert.deepEqual([view.wifi.ssid, view.wifi.passwordSet, view.wifi.password], ['FLOOR', true, undefined]);
+    assert.equal((await app.inject({ method: 'PUT', url: '/api/v1/settings/wifi', headers: adm, payload: { ssid: 'FLOOR', security: 'wpa2', password: 'short' } })).statusCode, 400);
+    const kept = (await app.inject({ method: 'PUT', url: '/api/v1/settings/wifi', headers: adm, payload: { ssid: 'FLOOR-2', security: 'wpa3', password: '', hidden: true } })).json();
+    assert.deepEqual([kept.wifi.ssid, kept.wifi.security, kept.wifi.hidden, kept.wifi.passwordSet], ['FLOOR-2', 'wpa3', true, true], 'empty password field keeps the old one');
+    assert.equal((await setup.getSetting(pool, 'sticks.wifi')).password, 'floor-pass-123');
+    const logRow = (await pool.query("SELECT detail FROM admin_log WHERE action = 'wifi.update' ORDER BY id DESC LIMIT 1")).rows[0].detail;
+    assert.ok(!JSON.stringify(logRow).includes('floor-pass'), 'the password is never logged');
+    assert.equal((await app.inject({ url: '/api/v1/settings/wifi' })).statusCode, 401);
+    const prof = (await app.inject({ url: '/api/v1/station/wifi', headers: as(station.key) })).json();
+    assert.equal(prof.ssid, 'FLOOR-2');
+    assert.match(prof.profileXml, /<keyMaterial>floor-pass-123<\/keyMaterial>/);
+    assert.match(prof.profileXml, /WPA3SAE/);
+    assert.equal((await app.inject({ url: '/api/v1/station/wifi' })).statusCode, 401, 'stations only');
     assert.equal((await app.inject({ url: '/api/v1/setup/progress' })).json().state, 'done');
   });
 

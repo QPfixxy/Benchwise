@@ -41,7 +41,7 @@ test('wizard validation: a good submission becomes a plan', () => {
   assert.equal(errors, undefined);
   assert.equal(plan.site.code, 'DAL');
   assert.deepEqual(plan.network, { mode: 'two', companyIp: '10.1.0.20', floorIp: '172.16.0.2' });
-  assert.deepEqual(plan.wifi, { ssid: 'FLOOR', password: 'floor-pass-123' });
+  assert.deepEqual(plan.wifi, { ssid: 'FLOOR', security: 'wpa2', password: 'floor-pass-123', hidden: false });
 });
 
 test('wizard validation: networks must be this machine, different, and well-formed', () => {
@@ -149,4 +149,35 @@ test('apply helper: request files are read without following links', { skip: pro
   assert.throws(() => readRequest(path.join(dir, 'apply.json')), /ELOOP|symbolic|too many/i);
   fs.writeFileSync(path.join(dir, 'real.json'), '{"id":"x"}');
   assert.deepEqual(readRequest(path.join(dir, 'real.json')), { id: 'x' });
+});
+
+// ---------------------------------------------------------------- floor Wi-Fi for sticks
+
+const { checkWifi, wlanProfileXml, publicView } = require('../src/wifi');
+
+test('Wi-Fi settings: WPA2/WPA3 need an 8-63 character passphrase; open needs none', () => {
+  assert.deepEqual(checkWifi({ ssid: 'FLOOR', password: 'floor-pass-123' }).wifi, { ssid: 'FLOOR', security: 'wpa2', password: 'floor-pass-123', hidden: false });
+  assert.match(checkWifi({ ssid: 'FLOOR', password: 'short' }).errors.join(), /8-63/);
+  assert.match(checkWifi({ ssid: 'FLOOR', security: 'wpa3', password: 'x'.repeat(64) }).errors.join(), /8-63/);
+  assert.deepEqual(checkWifi({ ssid: 'GUEST', security: 'open', password: 'ignored' }).wifi, { ssid: 'GUEST', security: 'open', password: '', hidden: false });
+  assert.match(checkWifi({ ssid: '', password: 'floor-pass-123' }).errors.join(), /SSID/);
+  assert.match(checkWifi({ ssid: 'x'.repeat(33), password: 'floor-pass-123' }).errors.join(), /SSID/);
+  assert.match(checkWifi({ ssid: 'FLOOR', security: 'wep', password: 'floor-pass-123' }).errors.join(), /WPA2, WPA3 or open/);
+  assert.deepEqual(publicView({ ssid: 'FLOOR', security: 'wpa2', password: 'secret-123', hidden: true }), { ssid: 'FLOOR', security: 'wpa2', hidden: true, passwordSet: true, updatedAt: null });
+});
+
+test('WLAN profile XML: Windows format, safe with awkward names and passwords', () => {
+  const xml = wlanProfileXml({ ssid: 'Floor & <Lab> "2"', security: 'wpa2', password: 'p<a>s&s"word', hidden: true });
+  assert.match(xml, /^<\?xml version="1.0"\?>\r\n<WLANProfile xmlns="http:\/\/www.microsoft.com\/networking\/WLAN\/profile\/v1">/);
+  assert.match(xml, /<name>Floor &amp; &lt;Lab&gt; &quot;2&quot;<\/name>/);
+  assert.match(xml, new RegExp(`<hex>${Buffer.from('Floor & <Lab> "2"').toString('hex').toUpperCase()}</hex>`));
+  assert.match(xml, /<keyMaterial>p&lt;a&gt;s&amp;s&quot;word<\/keyMaterial>/);
+  assert.match(xml, /<nonBroadcast>true<\/nonBroadcast>/);
+  assert.match(xml, /<authentication>WPA2PSK<\/authentication>\s*<encryption>AES<\/encryption>/);
+  assert.equal((xml.match(/<keyMaterial>/g) || []).length, 1);
+  const wpa3 = wlanProfileXml({ ssid: 'F', security: 'wpa3', password: 'floor-pass-123' });
+  assert.match(wpa3, /<authentication>WPA3SAE<\/authentication>/);
+  const open = wlanProfileXml({ ssid: 'GUEST', security: 'open', password: '' });
+  assert.match(open, /<authentication>open<\/authentication>\s*<encryption>none<\/encryption>/);
+  assert.doesNotMatch(open, /sharedKey/);
 });

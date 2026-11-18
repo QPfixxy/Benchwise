@@ -18,7 +18,7 @@ The installer sets up PostgreSQL, nginx (HTTPS) and Node.js 22, creates the data
 1. the facility code, name and time zone;
 2. **one network or two**: pick the network cards from a list;
 3. the certificate: the generated one, or your company's (paste or upload PEM);
-4. the floor Wi-Fi for the USB sticks this server makes;
+4. the floor Wi-Fi for the USB sticks this server makes: name, security (WPA2, WPA3 or open), password, and whether it's hidden. It can be changed any time under **Administration → Floor Wi-Fi**. The password is never shown or logged;
 5. the first administrator account.
 
 Network and certificate changes are applied by a small root-only helper (`benchwise-server-apply`), because the web service itself runs unprivileged. The wizard closes for good once setup is complete.
@@ -64,6 +64,8 @@ Create an integration key under **Administration → Integrations**, optionally 
 | `GET /api/v1/audits.csv?…` | A search as CSV |
 | `GET /api/v1/audits/<id>/report.pdf` | A compliance PDF of one record, drawn on demand |
 | `GET /api/v1/export.zip?site=…&from=YYYY-MM-DD&to=…` or `?serials=A,B,C` | A compliance export: one PDF per record plus `summary.csv` (up to 5,000 records; logged) |
+
+Stations (with their `bws_` key, on the floor side) can fetch the current floor Wi-Fi as a ready-made Windows Wi-Fi profile from `GET /api/v1/station/wifi`. That's how sticks keep their `wifi.xml` up to date.
 
 Searches also take `from` / `to` (completion date) and `serials` (a comma-separated list).
 

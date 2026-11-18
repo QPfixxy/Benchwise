@@ -168,4 +168,9 @@ Upgrades: run the new installer, or approve a version at the Hub and the site se
     - facility, networks (picked from a list of network cards), certificate, floor Wi-Fi and admin;
     - network and certificate changes applied by a root-only helper (systemd path unit), which re-validates every request and rolls back if nginx refuses.
   - Tested by a fresh install on the Ubuntu VM, the wizard clicked through in a browser, and two networks applied and verified from outside.
-- **Next:** Phase A step 3, making USB sticks at the site server.
+  - **Floor Wi-Fi for sticks:**
+    - set in the wizard, and editable later under Administration (write-only password, changes logged without it);
+    - name, security type (WPA2/WPA3/open) and hidden flag;
+    - turned into the Windows Wi-Fi profile the launcher loads;
+    - stations fetch the current one, so sticks pick up changes.
+- **Next:** Phase A step 3, making USB sticks at the site server (they get `wifi.xml` and `site.cmd` from these settings).

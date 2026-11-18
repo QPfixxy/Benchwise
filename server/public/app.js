@@ -210,7 +210,7 @@ function secretBox(title, key) {
 
 async function adminPage(view) {
   const out = el('div', {});
-  const [sites, stations, clients, users, log] = await Promise.all(['/sites', '/stations', '/api-clients', '/users', '/admin-log'].map((p) => api(p)));
+  const [sites, stations, clients, users, log, wifiInfo] = await Promise.all(['/sites', '/stations', '/api-clients', '/users', '/admin-log', '/settings/wifi'].map((p) => api(p)));
   const siteOptions = () => sites.map((s) => el('option', { value: s.code }, `${s.code} · ${s.name}`));
   const refresh = () => adminPage(view);
   const act = (fn) => async (e) => {
@@ -251,6 +251,7 @@ async function adminPage(view) {
         el('table', { class: 'grid' }, el('tbody', {}, clients.map((c) => el('tr', {}, el('td', {}, c.name, el('div', { class: 'muted small' }, `${c.key_prefix}… · ${c.sites ? c.sites.join(', ') : 'all sites'} · ${c.last_used_at ? `used ${when(c.last_used_at)}` : 'never used'}`)), el('td', {}, c.revoked_at ? el('span', { class: 'badge' }, 'revoked') : el('button', { class: 'btn small danger', onclick: async () => { if (confirm(`Revoke ${c.name}?`)) { await api(`/api-clients/${c.id}/revoke`, { method: 'POST' }); refresh(); } } }, 'Revoke')))))),
         el('form', { class: 'row', onsubmit: act(async (f) => { const r = await api('/api-clients', { method: 'POST', body: { name: f.name.value, sites: f.site.value ? [f.site.value] : [] } }); fill(out, secretBox(`API key for ${r.name}`, r.key)); setTimeout(() => window.scrollTo(0, 0)); }) }, field('name', { placeholder: 'Name (e.g. WMS)', required: true }), el('select', { name: 'site' }, el('option', { value: '' }, 'All sites'), siteOptions()), el('button', { class: 'btn primary' }, 'Create key')),
       ),
+      wifiCard(wifiInfo, act, refresh),
       el(
         'section',
         { class: 'card' },
@@ -286,7 +287,7 @@ function setupPage(view) {
     site: { code: '', name: '', timeZone: 'America/Chicago' },
     network: { mode: 'one', companyIp: '', floorIp: '' },
     certificate: { mode: 'generated', certPem: '', keyPem: '' },
-    wifi: { ssid: '', password: '' },
+    wifi: { ssid: '', password: '', security: 'wpa2', hidden: false },
     admin: { username: 'admin', password: '', confirm: '' },
   };
   const STEPS = ['Setup code', 'Facility', 'Networks', 'Certificate', 'Sticks', 'Administrator', 'Review'];
@@ -361,11 +362,13 @@ function setupPage(view) {
     // 4 sticks (floor Wi-Fi)
     () => ({
       body: [
-        el('p', {}, 'USB sticks made by this server join this Wi-Fi on the floor (units need internet for the MDM check). Leave empty if the floor is wired only; you can set it later.'),
+        el('p', {}, 'USB sticks made by this server join this Wi-Fi during Windows setup: units need internet for the MDM check. Leave the name empty if the floor is wired only. It can be changed any time under Administration.'),
         field('Floor Wi-Fi name (SSID)', bind(s.wifi, 'ssid', { size: 32, maxlength: 32, autocomplete: 'off' })),
-        field('Wi-Fi password', bind(s.wifi, 'password', { type: 'password', size: 32, maxlength: 63, autocomplete: 'new-password' }), 'Stored on this server and written onto the sticks it makes.'),
+        field('Security', el('select', { onchange: (e) => ((s.wifi.security = e.target.value), render()) }, [['wpa2', 'WPA2-Personal'], ['wpa3', 'WPA3-Personal'], ['open', 'Open (no password)']].map(([v, t]) => el('option', { value: v, selected: s.wifi.security === v }, t)))),
+        s.wifi.security === 'open' ? null : field('Wi-Fi password', bind(s.wifi, 'password', { type: 'password', size: 32, maxlength: 63, autocomplete: 'new-password' }), 'Stored on this server and written onto the sticks it makes.'),
+        el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: s.wifi.hidden, onchange: (e) => (s.wifi.hidden = e.target.checked) }), ' Hidden network (the name is not broadcast)'),
       ],
-      check: () => (s.wifi.ssid && s.wifi.password && s.wifi.password.length < 8 ? ['Wi-Fi password: at least 8 characters (or empty for an open network).'] : []),
+      check: () => (s.wifi.ssid && s.wifi.security !== 'open' && (s.wifi.password.length < 8 || s.wifi.password.length > 63) ? ['Wi-Fi password: 8-63 characters.'] : []),
     }),
     // 5 administrator
     () => ({
@@ -385,7 +388,7 @@ function setupPage(view) {
           el('dt', {}, 'Facility'), el('dd', {}, `${s.site.code.toUpperCase()} · ${s.site.name} · ${s.site.timeZone}`),
           el('dt', {}, 'Networks'), el('dd', {}, s.network.mode === 'two' ? `Two: staff on ${s.network.companyIp}, floor on ${s.network.floorIp}` : 'One network'),
           el('dt', {}, 'Certificate'), el('dd', {}, s.certificate.mode === 'upload' ? 'Company certificate' : 'Made by the installer'),
-          el('dt', {}, 'Sticks Wi-Fi'), el('dd', {}, s.wifi.ssid ? s.wifi.ssid : 'Not set (wired floor)'),
+          el('dt', {}, 'Sticks Wi-Fi'), el('dd', {}, s.wifi.ssid ? `${s.wifi.ssid} · ${s.wifi.security.toUpperCase()}${s.wifi.hidden ? ' · hidden' : ''}` : 'Not set (wired floor)'),
           el('dt', {}, 'Administrator'), el('dd', {}, s.admin.username)),
       ],
       nextLabel: 'Apply',
@@ -455,6 +458,36 @@ function setupPage(view) {
     );
   }
   render();
+}
+
+/** Floor Wi-Fi that USB sticks join (shown without its password). */
+function wifiCard({ wifi, securityOptions }, act, refresh) {
+  const w = wifi || { ssid: '', security: 'wpa2', hidden: false, passwordSet: false };
+  return el(
+    'section',
+    { class: 'card' },
+    el('h2', {}, 'Floor Wi-Fi (USB sticks)'),
+    el('p', { class: 'muted small' }, 'Sticks join this network during Windows setup (the MDM check needs internet). Sticks pick up a change the next time they reach this server.'),
+    wifi
+      ? el('p', {}, el('strong', {}, wifi.ssid), ` · ${securityOptions.find((o) => o.value === wifi.security)?.label || wifi.security}${wifi.hidden ? ' · hidden' : ''}`, el('span', { class: 'muted small' }, wifi.updatedAt ? ` · changed ${new Date(wifi.updatedAt).toLocaleString()}` : ''))
+      : el('p', { class: 'muted' }, 'Not set: sticks need a wired connection.'),
+    el(
+      'form',
+      {
+        class: 'row',
+        onsubmit: act(async (f) => {
+          await api('/settings/wifi', { method: 'PUT', body: { ssid: f.ssid.value, password: f.password.value, security: f.security.value, hidden: f.hidden.checked } });
+          toast('Floor Wi-Fi saved');
+          refresh();
+        }),
+      },
+      el('input', { name: 'ssid', placeholder: 'Wi-Fi name (SSID)', value: w.ssid, maxlength: 32, required: true, size: 16 }),
+      el('select', { name: 'security' }, securityOptions.map((o) => el('option', { value: o.value, selected: o.value === w.security }, o.label))),
+      el('input', { name: 'password', type: 'password', placeholder: w.passwordSet ? 'Password (unchanged)' : 'Password', autocomplete: 'new-password', maxlength: 63, size: 16 }),
+      el('label', { class: 'small' }, el('input', { name: 'hidden', type: 'checkbox', checked: w.hidden }), ' hidden'),
+      el('button', { class: 'btn primary' }, 'Save'),
+    ),
+  );
 }
 
 // ------------------------------------------------------------------ shell

@@ -11,6 +11,7 @@ const auth = require('./auth');
 const { newKey } = require('./keys');
 const { hashPassword, checkStrength } = require('./passwords');
 const setup = require('./setup');
+const wifiCfg = require('./wifi');
 const crypto = require('node:crypto');
 const { version } = require('../package.json');
 const yazl = require('yazl');
@@ -200,7 +201,7 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
         }
         await setup.setSetting(c, 'site.home', { siteId: site.rows[0].id, code: plan.site.code });
         await setup.setSetting(c, 'network', plan.network);
-        if (plan.wifi) await setup.setSetting(c, 'sticks.wifi', plan.wifi);
+        if (plan.wifi) await setup.setSetting(c, 'sticks.wifi', { ...plan.wifi, updatedAt: new Date().toISOString() });
         await setup.setSetting(c, 'setup', { complete: true, completedAt: new Date().toISOString(), applyId: id });
         await store.log(c, plan.admin.username, 'setup.complete', { site: plan.site.code, network: plan.network.mode, certificate: plan.certificate.mode, wifi: Boolean(plan.wifi) });
       });
@@ -228,6 +229,15 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
   app.get('/api/v1/station', async (req) => {
     const st = await principal(req, { station: true });
     return { station: st.name, site: { code: st.site_code, name: st.site_name } };
+  });
+
+  // The current floor Wi-Fi as a Windows WLAN profile, so a stick that
+  // reaches the server (even over a cable) can refresh its wifi.xml.
+  app.get('/api/v1/station/wifi', async (req, reply) => {
+    await principal(req, { station: true });
+    const w = await setup.getSetting(pool, 'sticks.wifi');
+    if (!w) return reply.code(204).send();
+    return { ...wifiCfg.publicView(w), profileXml: wifiCfg.wlanProfileXml(w) };
   });
 
   app.post(
@@ -536,6 +546,33 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
     await store.log(pool, p.name, 'api_client.revoke', { name: r.rows[0].name });
     return { ok: true };
   });
+
+  app.get('/api/v1/settings/wifi', async (req) => {
+    await admin(req);
+    return { wifi: wifiCfg.publicView(await setup.getSetting(pool, 'sticks.wifi')), securityOptions: Object.entries(wifiCfg.SECURITY).map(([value, s]) => ({ value, label: s.label })) };
+  });
+
+  app.put(
+    '/api/v1/settings/wifi',
+    { schema: { body: { type: 'object', properties: { ssid: { type: 'string', maxLength: 64 }, password: { type: 'string', maxLength: 128 }, security: { type: 'string', maxLength: 10 }, hidden: { type: 'boolean' }, clear: { type: 'boolean' } } } } },
+    async (req) => {
+      const p = await admin(req);
+      if (req.body.clear) {
+        await pool.query("DELETE FROM server_settings WHERE key = 'sticks.wifi'");
+        await store.log(pool, p.name, 'wifi.clear', {});
+        return { wifi: null };
+      }
+      const current = await setup.getSetting(pool, 'sticks.wifi');
+      // An empty password field means "keep the current password".
+      const body = { ...req.body, password: req.body.password || (req.body.security !== 'open' ? current?.password : '') };
+      const { errors, wifi } = wifiCfg.checkWifi(body);
+      if (errors) fail(400, errors.join(' '));
+      const stored = { ...wifi, updatedAt: new Date().toISOString() };
+      await setup.setSetting(pool, 'sticks.wifi', stored);
+      await store.log(pool, p.name, 'wifi.update', { ssid: wifi.ssid, security: wifi.security, hidden: wifi.hidden, passwordChanged: Boolean(req.body.password) });
+      return { wifi: wifiCfg.publicView(stored) };
+    },
+  );
 
   app.get('/api/v1/admin-log', async (req) => {
     await admin(req);

@@ -12,6 +12,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 const { checkStrength } = require('./passwords');
+const { checkWifi } = require('./wifi');
 
 // No 0/O, 1/I/L: easy to read aloud and to type.
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -98,10 +99,12 @@ function checkSetup(body, { interfaces }) {
   errors.push(...checkNetwork(b.network, interfaces));
   const cert = checkCertificate(b.certificate);
   errors.push(...cert.errors);
-  const wifi = b.wifi || null;
-  if (wifi && wifi.ssid) {
-    if (String(wifi.ssid).length > 32) errors.push('Wi-Fi name: at most 32 characters.');
-    if (wifi.password && (String(wifi.password).length < 8 || String(wifi.password).length > 63)) errors.push('Wi-Fi password: 8-63 characters (or empty for an open network).');
+  // Floor Wi-Fi for sticks: optional here (wired floors), editable later.
+  let wifi = null;
+  if (b.wifi && b.wifi.ssid) {
+    const w = checkWifi(b.wifi);
+    if (w.errors) errors.push(...w.errors);
+    else wifi = w.wifi;
   }
   const admin = b.admin || {};
   if (!/^[a-z0-9._-]{3,40}$/.test(admin.username || '')) errors.push('Admin username: 3-40 lowercase letters, digits, dot, dash or underscore.');
@@ -114,7 +117,7 @@ function checkSetup(body, { interfaces }) {
       site: { code: site.code.toUpperCase(), name: String(site.name).trim(), timeZone: site.timeZone },
       network: b.network.mode === 'two' ? { mode: 'two', companyIp: b.network.companyIp, floorIp: b.network.floorIp } : { mode: 'one' },
       certificate: b.certificate?.mode === 'upload' ? { mode: 'upload', certPem: b.certificate.certPem, keyPem: b.certificate.keyPem } : { mode: 'generated' },
-      wifi: wifi && wifi.ssid ? { ssid: String(wifi.ssid), password: String(wifi.password || '') } : null,
+      wifi,
       admin: { username: admin.username, password: admin.password },
     },
   };
