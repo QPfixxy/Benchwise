@@ -7,8 +7,8 @@ The central record for every unit Benchwise tests, across facilities: benches an
 ## Install (Ubuntu Server 22.04, 24.04 or 26.04)
 
 ```bash
-git clone https://github.com/QPfixxy/Benchwise.git
-cd Benchwise/hub
+git clone -b feature/hub https://github.com/QPfixxy/Benchwise.git   # until the server is merged to main
+cd Benchwise/server
 sudo ./deploy/install.sh
 ```
 
