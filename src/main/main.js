@@ -19,7 +19,9 @@ const { detectEnvironment } = require('./intake/environment');
 const { runMdmCheck, loadKnownTenants, mdmVerdict } = require('./intake/mdm');
 const { runDefenderScan, malwareVerdict } = require('./intake/defender');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
-const { Settings, resolveDataDir, classifyStorage, detectStick } = require('./settings');
+const { Settings, resolveDataDir, classifyStorage, detectStick, hubConfig } = require('./settings');
+const { Outbox } = require('./hub/outbox');
+const { hubRequest } = require('./hub/client');
 const { ReportStore, buildAudit } = require('./reports/store');
 const { renderReportHtml } = require('./reports/template');
 
@@ -64,6 +66,7 @@ let keyboardCapture = false;
 let stress = null;
 let lastDriveHealth = null;
 let onStick = null; // decided once: is the data folder on the stick we run from?
+let outbox = null; // reports waiting for the Benchwise Hub
 let lastMdm = null;
 let mdmPromise = null;
 let lastMalware = null;
@@ -250,7 +253,26 @@ function registerIpc() {
     return { marker, ejected };
   });
   handle('settings:get', () => settings.get());
-  handle('settings:update', (partial) => settings.update(partial));
+  handle('settings:update', (partial) => {
+    const next = settings.update(partial);
+    outbox?.kick(); // new Hub settings: try the queue now
+    return next;
+  });
+
+  // Benchwise Hub: queue status, connection test, retry now.
+  handle('hub:status', async () => ({ ...(await outbox.status()), fromSiteCmd: Boolean(hubConfig(settings.get())?.fromEnv) }));
+  handle('hub:retry', () => outbox.kick());
+  handle('hub:test', async () => {
+    const cfg = hubConfig(settings.get());
+    if (!cfg) return { ok: false, message: 'Enter the Hub address and station key first.' };
+    try {
+      const r = await hubRequest({ ...cfg, path: '/api/v1/station', netFetch: net.fetch, timeoutMs: 15000 });
+      if (r.status === 200) return { ok: true, message: `Connected: "${r.json.station}" at ${r.json.site.code} (${r.json.site.name}).` };
+      return { ok: false, message: r.status === 401 ? 'The Hub rejected this station key.' : `The Hub answered ${r.status}: ${r.json?.error || ''}` };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  });
 
   handle('dialog:chooseDir', async () => {
     const res = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });
@@ -270,9 +292,21 @@ function registerIpc() {
     const hw = lastHardware || (await getHardware());
     const hardware = { ...hw, ...(lastDriveHealth && { driveHealth: lastDriveHealth }), ...((lastMdm || lastMalware) && { intake: { mdm: lastMdm, malware: lastMalware } }) };
     const audit = buildAudit({ input: input || {}, hardware, settings: settings.get(), app: appInfo() });
+    // Queue for the Hub (if one is set up). Never blocks or fails the save.
+    const queueForHub = async (saved) => {
+      if (!outbox || !hubConfig(settings.get())) return null;
+      try {
+        const pdf = saved.pdfPath ? await fsp.readFile(saved.pdfPath) : null;
+        await outbox.enqueue(audit, pdf);
+        return 'queued';
+      } catch (err) {
+        console.error('[benchwise] hub queue failed:', err.message);
+        return 'error';
+      }
+    };
     try {
       const saved = await store.save(audit);
-      return { ...saved, overall: audit.overall, id: audit.id };
+      return { ...saved, overall: audit.overall, id: audit.id, hub: await queueForHub(saved) };
     } catch (err) {
       // The reports folder (often a network share) failed: keep the record on
       // the stick / local data folder instead, like the intake toolkit's
@@ -280,7 +314,7 @@ function registerIpc() {
       const local = path.join(settings.dataDir, 'reports');
       if (path.resolve(store.dir) === path.resolve(local)) throw err;
       const saved = await new ReportStore(() => local, renderPdf).save(audit);
-      return { ...saved, overall: audit.overall, id: audit.id, fallback: { failedDir: store.dir, reason: err.message } };
+      return { ...saved, overall: audit.overall, id: audit.id, fallback: { failedDir: store.dir, reason: err.message }, hub: await queueForHub(saved) };
     }
   });
 
@@ -609,8 +643,15 @@ if (!smokeArg && !app.requestSingleInstanceLock()) {
 
     registerAppProtocol();
     lockDownSessions();
+    outbox = new Outbox({
+      dir: path.join(settings.dataDir, 'outbox'),
+      config: () => hubConfig(settings.get()),
+      send: (cfg, body) => hubRequest({ ...cfg, method: 'POST', path: '/api/v1/audits', body, netFetch: net.fetch }),
+      onChange: () => mainWindow?.webContents.send('hub:changed'),
+    });
     registerIpc();
     createWindow();
+    outbox.kick(); // send anything left from earlier sessions
     getHardware().catch(() => {}); // start scanning while the UI loads
 
     if (uiCheckArg) {
@@ -626,7 +667,10 @@ if (!smokeArg && !app.requestSingleInstanceLock()) {
 
   // Only the main window closing should quit; hidden PDF-render windows
   // closing must not (that previously killed the app mid-save).
-  app.on('before-quit', () => stress?.dispose());
+  app.on('before-quit', () => {
+    stress?.dispose();
+    outbox?.stop();
+  });
 
   app.on('window-all-closed', () => {
     if (!smokeArg && !mainWindow) app.quit();

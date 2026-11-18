@@ -23,3 +23,11 @@ rem set "SHARE_USER=intakestation"
 rem set "SHARE_PASS=change-me"
 rem set "BENCHWISE_REPORTS_DIR=\\192.168.1.10\AutopilotLogs\Benchwise"
 rem set "BENCHWISE_KNOWN_TENANTS=\\192.168.1.10\AutopilotLogs\Scripts\KnownTenants.txt"
+
+rem Optional: Benchwise Hub, the central records server. Saved reports are
+rem queued on the stick and sent in the background. The station key comes
+rem from the Hub (Administration > Stations > Enroll); the fingerprint is
+rem printed by the Hub installer (needed for its self-signed certificate).
+rem set "BENCHWISE_HUB_URL=https://192.168.1.20"
+rem set "BENCHWISE_HUB_KEY=bws_..."
+rem set "BENCHWISE_HUB_FINGERPRINT=41:69:E0:..."

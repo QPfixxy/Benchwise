@@ -7,6 +7,16 @@ const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 contextBridge.exposeInMainWorld('benchwise', {
   appInfo: call('app:info'),
   quit: call('app:quit'),
+  hub: {
+    status: call('hub:status'),
+    test: call('hub:test'),
+    retry: call('hub:retry'),
+    onChange: (cb) => {
+      const listener = () => cb();
+      ipcRenderer.on('hub:changed', listener);
+      return () => ipcRenderer.removeListener('hub:changed', listener);
+    },
+  },
   shutdown: call('system:shutdown'),
   collectHardware: call('hardware:collect'),
   detectEnvironment: call('env:detect'),

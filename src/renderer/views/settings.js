@@ -33,6 +33,7 @@ export default {
       }
     }
 
+    const hub = hubCard(ctx, input, field);
     root.append(
       el('div', { class: 'page-head' }, el('div', {}, el('h1', {}, 'Settings'), el('p', { class: 'muted small' }, `Stored in ${ctx.state.settings.dataDir}`))),
       el(
@@ -123,6 +124,7 @@ export default {
           ),
           el('p', { class: 'muted small' }, 'Only when both checks have a result (no ghost profile or unconfirmed result waiting for you) and the report goes to the stick or a share.'),
         ),
+        hub.node,
         el(
           'section',
           { class: 'card' },
@@ -140,5 +142,68 @@ export default {
       ),
       el('div', { class: 'row' }, el('button', { class: 'btn primary', onclick: save }, 'Save settings')),
     );
+    return hub.off; // stop listening for Hub updates when leaving Settings
   },
 };
+
+/** Benchwise Hub: where saved reports are sent (central records). */
+function hubCard(ctx, input, field) {
+  const status = el('p', { class: 'muted small' }, '');
+  const testLine = el('p', { class: 'small' });
+  const refresh = async () => {
+    try {
+      const st = await ctx.api.hub.status();
+      status.textContent = !st.configured
+        ? 'Not set up: reports are only saved locally.'
+        : [
+            st.fromSiteCmd ? "Set by the stick's site.cmd." : null,
+            `${st.pending} waiting to send`,
+            st.failed ? `${st.failed} refused (kept on the stick)` : null,
+            st.sentAt ? `last sent ${new Date(st.sentAt).toLocaleString()}` : null,
+            st.error ? `Problem: ${st.error}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+    } catch {
+      /* not critical */
+    }
+  };
+  refresh();
+  const off = ctx.api.hub.onChange(refresh);
+  const node = el(
+    'section',
+    { class: 'card' },
+    el('h2', {}, 'Benchwise Hub'),
+    el('p', { class: 'muted small' }, 'Saved reports are queued and sent to your central Hub in the background. Testing never waits for the network.'),
+    field('Hub address', input('hubUrl', { placeholder: 'https://hub.example.local', spellcheck: 'false' })),
+    field('Station key', input('hubKey', { type: 'password', placeholder: 'bws_…', autocomplete: 'off', spellcheck: 'false' }), 'From the Hub: Administration → Stations → Enroll.'),
+    field(
+      'Certificate fingerprint (SHA-256)',
+      input('hubFingerprint', { placeholder: 'Only for a self-signed Hub certificate', spellcheck: 'false' }),
+      'The installer prints it. Leave empty if the Hub uses a certificate your PCs already trust.',
+    ),
+    el(
+      'div',
+      { class: 'row' },
+      el(
+        'button',
+        {
+          class: 'btn ghost',
+          onclick: async (e) => {
+            e.preventDefault();
+            testLine.textContent = 'Testing… (save first if you changed the fields)';
+            const r = await ctx.api.hub.test();
+            testLine.textContent = r.message;
+            testLine.className = `small ${r.ok ? 'pass-text' : 'fail-text'}`;
+            refresh();
+          },
+        },
+        'Test connection',
+      ),
+      el('button', { class: 'btn ghost', onclick: (e) => (e.preventDefault(), ctx.api.hub.retry()) }, 'Send now'),
+    ),
+    testLine,
+    status,
+  );
+  return { node, off };
+}
