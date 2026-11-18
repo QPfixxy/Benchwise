@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { Outbox, RETRY_MIN_MS } = require('../src/main/hub/outbox');
 const { hubRequest, validFingerprint } = require('../src/main/hub/client');
-const { hubConfig } = require('../src/main/settings');
+const { serverConfig } = require('../src/main/settings');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bw-outbox-'));
 const rec = (id = crypto.randomUUID()) => ({ schema: 'qudit.audit', schemaVersion: 1, id, completedAt: new Date().toISOString(), tests: {} });
@@ -35,17 +35,16 @@ function harness(responses, { configured = true } = {}) {
   return { box, sent, timers, ls, dir };
 }
 
-test('outbox: queued reports are sent and moved to sent/; the PDF travels too', async () => {
+test('outbox: queued records are sent and moved to sent/ (records only, no PDFs)', async () => {
   const h = harness([{ status: 201 }, { status: 200 }]);
   const a = rec();
-  await h.box.enqueue(a, Buffer.from('%PDF-1.7'));
+  await h.box.enqueue(a);
   await h.box.flush();
   await h.box.enqueue(rec());
   await h.box.flush();
   assert.equal(h.sent.length, 2);
   assert.equal(h.sent[0].record.id, a.id);
-  assert.equal(Buffer.from(h.sent[0].pdf, 'base64').toString(), '%PDF-1.7');
-  assert.equal(h.sent[1].pdf, undefined);
+  assert.deepEqual(Object.keys(h.sent[0]), ['record']);
   assert.deepEqual(h.ls('pending'), []);
   assert.equal(h.ls('sent').length, 2);
   assert.ok((await h.box.status()).sentAt);
@@ -94,9 +93,9 @@ test('outbox: a rejected key stops the run (retry later); no Hub configured mean
 });
 
 test('hub config: Settings, with site.cmd (environment) winning; both address and key needed', () => {
-  assert.equal(hubConfig({ hubUrl: 'https://a', hubKey: '' }, {}), null);
-  assert.deepEqual(hubConfig({ hubUrl: 'https://a', hubKey: 'k', hubFingerprint: '' }, {}), { url: 'https://a', key: 'k', fingerprint: null, fromEnv: false });
-  const env = hubConfig({ hubUrl: 'https://a', hubKey: 'k' }, { BENCHWISE_HUB_URL: 'https://b', BENCHWISE_HUB_KEY: 'k2', BENCHWISE_HUB_FINGERPRINT: 'AA' });
+  assert.equal(serverConfig({ serverUrl: 'https://a', serverKey: '' }, {}), null);
+  assert.deepEqual(serverConfig({ serverUrl: 'https://a', serverKey: 'k', serverFingerprint: '' }, {}), { url: 'https://a', key: 'k', fingerprint: null, fromEnv: false });
+  const env = serverConfig({ serverUrl: 'https://a', serverKey: 'k' }, { BENCHWISE_SERVER_URL: 'https://b', BENCHWISE_SERVER_KEY: 'k2', BENCHWISE_SERVER_FINGERPRINT: 'AA' });
   assert.deepEqual(env, { url: 'https://b', key: 'k2', fingerprint: 'AA', fromEnv: true });
   assert.equal(validFingerprint('41:69:E0:E8:57:96:AD:6B:AC:BE:13:5D:9D:A0:92:A7:99:D5:60:76:F4:77:E7:8D:A6:9B:54:99:CC:42:DD:3C'), true);
   assert.equal(validFingerprint('41:69'), false);

@@ -22,10 +22,10 @@ const DEFAULTS = Object.freeze({
   // the report goes to the stick or a share.
   intakeAutoSave: true,
   // Benchwise Hub (central records). The stick's site.cmd can set these
-  // instead: BENCHWISE_HUB_URL, BENCHWISE_HUB_KEY, BENCHWISE_HUB_FINGERPRINT.
-  hubUrl: '',
-  hubKey: '',
-  hubFingerprint: '',
+  // instead: BENCHWISE_SERVER_URL, BENCHWISE_SERVER_KEY, BENCHWISE_SERVER_FINGERPRINT.
+  serverUrl: '',
+  serverKey: '',
+  serverFingerprint: '',
   reportsDir: '', // empty = <data dir>/reports
   // MDM / Autopilot test. KnownTenants.txt is client data: it lives on the
   // intake share or the stick, never in the app. Empty = <data dir>/KnownTenants.txt.
@@ -146,9 +146,9 @@ function sanitize(v) {
     assetTagPattern: str(v.assetTagPattern, 200),
     assetTagRequired: v.assetTagRequired === true,
     intakeAutoSave: v.intakeAutoSave !== false,
-    hubUrl: str(v.hubUrl, 300),
-    hubKey: str(v.hubKey, 120),
-    hubFingerprint: str(v.hubFingerprint, 140),
+    serverUrl: str(v.serverUrl, 300),
+    serverKey: str(v.serverKey, 120),
+    serverFingerprint: str(v.serverFingerprint, 140),
     reportsDir: str(v.reportsDir, 1024),
     knownTenantsFile: str(v.knownTenantsFile, 1024),
     mdmLockedFails: v.mdmLockedFails !== false,
@@ -222,12 +222,12 @@ function classifyStorage(reportsDir, { dataDir, onStick = false } = {}) {
 }
 
 /** The Hub to send reports to, or null if none is set up. site.cmd's values win. */
-function hubConfig(values, env = process.env) {
-  const url = (env.BENCHWISE_HUB_URL || values.hubUrl || '').trim();
-  const key = (env.BENCHWISE_HUB_KEY || values.hubKey || '').trim();
-  const fingerprint = (env.BENCHWISE_HUB_FINGERPRINT || values.hubFingerprint || '').trim();
+function serverConfig(values, env = process.env) {
+  const url = (env.BENCHWISE_SERVER_URL || values.serverUrl || '').trim();
+  const key = (env.BENCHWISE_SERVER_KEY || values.serverKey || '').trim();
+  const fingerprint = (env.BENCHWISE_SERVER_FINGERPRINT || values.serverFingerprint || '').trim();
   if (!url || !key) return null;
-  return { url, key, fingerprint: fingerprint || null, fromEnv: Boolean(env.BENCHWISE_HUB_URL || env.BENCHWISE_HUB_KEY) };
+  return { url, key, fingerprint: fingerprint || null, fromEnv: Boolean(env.BENCHWISE_SERVER_URL || env.BENCHWISE_SERVER_KEY) };
 }
 
-module.exports = { Settings, resolveDataDir, migrateLegacyUserData, classifyStorage, detectStick, offSystemDrive, isSetupAccount, hubConfig, TEST_IDS, DEFAULTS };
+module.exports = { Settings, resolveDataDir, migrateLegacyUserData, classifyStorage, detectStick, offSystemDrive, isSetupAccount, serverConfig, TEST_IDS, DEFAULTS };

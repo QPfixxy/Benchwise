@@ -64,7 +64,4 @@ function extractFields(r) {
   };
 }
 
-/** True if the bytes look like a PDF. */
-const isPdf = (buf) => Buffer.isBuffer(buf) && buf.length > 4 && buf.subarray(0, 5).toString('latin1') === '%PDF-';
-
-module.exports = { canonicalJson, sha256, chainHash, validateRecord, extractFields, isPdf, SCHEMAS };
+module.exports = { canonicalJson, sha256, chainHash, validateRecord, extractFields, SCHEMAS };

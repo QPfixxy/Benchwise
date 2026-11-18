@@ -162,8 +162,8 @@ export default {
               ? el('p', { class: 'warn-text' }, `Couldn't save to ${res.fallback.failedDir} (${res.fallback.reason}). Saved here instead, so nothing is lost:`)
               : null,
             el('p', { class: 'muted small' }, res.jsonPath),
-            res.hub === 'queued' ? el('p', { class: 'small' }, '↑ Queued for Benchwise Hub: it sends in the background.') : null,
-            res.hub === 'error' ? el('p', { class: 'warn-text small' }, "Couldn't queue for Benchwise Hub; the report is saved locally.") : null,
+            res.hub === 'queued' ? el('p', { class: 'small' }, '↑ Queued for the Benchwise server: it sends in the background.') : null,
+            res.hub === 'error' ? el('p', { class: 'warn-text small' }, "Couldn't queue for the Benchwise server; the report is saved locally.") : null,
             res.pdfError ? el('p', { class: 'fail-text' }, `PDF could not be generated: ${res.pdfError}. The JSON record was saved.`) : null,
             el(
               'div',

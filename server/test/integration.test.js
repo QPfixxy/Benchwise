@@ -1,22 +1,18 @@
 'use strict';
 
 // Runs the real server against a real PostgreSQL. Needs an empty test
-// database: HUB_TEST_DATABASE_URL=postgres://... npm test
+// database: BW_TEST_DATABASE_URL=postgres://... npm test
 // Skipped when that isn't set (e.g. on a laptop without PostgreSQL).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const os = require('node:os');
-const fs = require('node:fs');
-const path = require('node:path');
 const crypto = require('node:crypto');
 
-const URL_ = process.env.HUB_TEST_DATABASE_URL;
-const skip = !URL_ && 'set HUB_TEST_DATABASE_URL to run';
+const URL_ = process.env.BW_TEST_DATABASE_URL;
+const skip = !URL_ && 'set BW_TEST_DATABASE_URL to run';
 
 const { createPool, migrate } = require('../src/db');
 const { buildApp } = require('../src/server');
-const { fileStore } = require('../src/store');
 const { newKey } = require('../src/keys');
 const { hashPassword } = require('../src/passwords');
 
@@ -39,9 +35,8 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
   // Fresh schema every run.
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  const filesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-files-'));
-  const config = { filesDir, secureCookies: false, sessionHours: 12, maxUploadMb: 5, trustProxy: false };
-  const app = buildApp({ pool, config, files: fileStore(filesDir), logger: false });
+  const config = { secureCookies: false, sessionHours: 12, maxUploadMb: 5, trustProxy: false };
+  const app = buildApp({ pool, config, logger: false });
 
   const [dal, phx] = (await pool.query("INSERT INTO sites (code, name) VALUES ('DAL', 'Dallas'), ('PHX', 'Phoenix') RETURNING id")).rows.map((r) => r.id);
   const station = newKey('station');
@@ -66,22 +61,33 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     assert.equal((await upload({ record: { ...record(), id: 'nope' } })).statusCode, 400);
     assert.equal((await upload({ record: record(), extra: 1 })).statusCode, 400);
     assert.equal((await upload({ record: record() }, 'bws_' + 'x'.repeat(43))).statusCode, 401);
-    assert.equal((await upload({ record: record(), pdf: Buffer.from('<html>').toString('base64') })).statusCode, 400);
+    assert.equal((await upload({ record: record(), pdf: 'JVBERi0=' })).statusCode, 400, 'servers take records only, no PDFs');
     await pool.query('UPDATE stations SET revoked_at = now() WHERE key_hash = $1', [phxStation.hash]);
     assert.equal((await upload({ record: record() }, phxStation.key)).statusCode, 401, 'revoked');
     await pool.query('UPDATE stations SET revoked_at = NULL WHERE key_hash = $1', [phxStation.hash]);
   });
 
-  await t.test('PDFs are stored once and served back', async () => {
-    const pdf = Buffer.from('%PDF-1.7\nhello\n%%EOF');
-    const r = record({ serial: 'SN-PDF' });
-    assert.equal((await upload({ record: r, pdf: pdf.toString('base64') })).statusCode, 201);
-    const client = newKey('client');
-    await pool.query("INSERT INTO api_clients (name, key_prefix, key_hash) VALUES ('wms', $1, $2)", [client.prefix, client.hash]);
-    const res = await app.inject({ url: `/api/v1/audits/${r.id}/pdf`, headers: as(client.key) });
-    assert.equal(res.statusCode, 200);
-    assert.equal(res.headers['content-type'], 'application/pdf');
-    assert.deepEqual(res.rawPayload, pdf);
+  await t.test('full records land in their yearly partition; search stays on the narrow table', async () => {
+    const r = record({ serial: 'SN-2025', completedAt: '2025-06-30T23:59:59Z' });
+    assert.equal((await upload({ record: r })).statusCode, 201);
+    const where = await pool.query('SELECT tableoid::regclass AS part FROM audit_records WHERE audit_id = $1', [r.id]);
+    assert.equal(String(where.rows[0].part), 'audit_records_2025');
+    const old = record({ serial: 'SN-1999', completedAt: '1999-01-01T00:00:00Z' });
+    assert.equal((await upload({ record: old })).statusCode, 201, 'outside the created years: the default partition');
+    assert.equal(String((await pool.query('SELECT tableoid::regclass AS p FROM audit_records WHERE audit_id = $1', [old.id])).rows[0].p), 'audit_records_other');
+    const cols = (await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'audits'")).rows.map((c) => c.column_name);
+    assert.ok(!cols.includes('record'), 'the search table holds no full records');
+  });
+
+  await t.test('floor side: only station endpoints; staff side: no station uploads', async () => {
+    const floorApp = buildApp({ pool, config, side: 'floor', logger: false });
+    const staffApp = buildApp({ pool, config, side: 'staff', logger: false });
+    assert.equal((await floorApp.inject({ method: 'POST', url: '/api/v1/audits', headers: as(station.key), payload: { record: record() } })).statusCode, 201);
+    for (const url of ['/', '/api/v1/audits', '/api/v1/me', '/api/v1/stations']) assert.equal((await floorApp.inject({ url })).statusCode, 404, `floor ${url}`);
+    assert.equal((await staffApp.inject({ method: 'POST', url: '/api/v1/audits', headers: as(station.key), payload: { record: record() } })).statusCode, 404, 'staff side takes no uploads');
+    assert.equal((await staffApp.inject({ url: '/' })).statusCode, 200);
+    await floorApp.close();
+    await staffApp.close();
   });
 
   await t.test('integration keys: search, incremental export by cursor, unit history, site limits', async () => {
@@ -148,15 +154,21 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
   await t.test('audits are append-only and the chain exposes tampering', async () => {
     await assert.rejects(pool.query("UPDATE audits SET overall = 'pass'"), /append-only/);
     await assert.rejects(pool.query('DELETE FROM audits'), /append-only/);
+    await assert.rejects(pool.query("UPDATE audit_records SET record = '{}'"), /append-only/);
+    await assert.rejects(pool.query('DELETE FROM audit_records'), /append-only/);
     const ok = (await pool.query('SELECT id FROM sites WHERE code = $1', ['DAL'])).rows[0].id;
     const { verifyChain } = require('../src/store');
-    assert.equal((await verifyChain(pool, ok)).ok, true);
+    const intact = await verifyChain(pool, ok, { batch: 2 }); // small batches: exercises the paging
+    assert.equal(intact.ok, true);
+    assert.ok(intact.checked > 4);
     // Simulate an attacker with database owner rights who bypasses the trigger.
     await pool.query('ALTER TABLE audits DISABLE TRIGGER audits_append_only');
     // e.g. quietly turning a unit's result from pass into fail
-    await pool.query(`UPDATE audits SET record = jsonb_set(record, '{overall}', '"fail"') WHERE serial = 'SN-PDF'`);
+    await pool.query('ALTER TABLE audit_records DISABLE TRIGGER audit_records_append_only');
+    await pool.query(`UPDATE audit_records SET record = jsonb_set(record, '{overall}', '"fail"') WHERE record->>'serial' = 'SN-2025'`);
+    await pool.query('ALTER TABLE audit_records ENABLE TRIGGER audit_records_append_only');
     await pool.query('ALTER TABLE audits ENABLE TRIGGER audits_append_only');
-    const v = await verifyChain(pool, ok);
+    const v = await verifyChain(pool, ok, { batch: 2 });
     assert.equal(v.ok, false);
     assert.equal(v.reason, 'record changed');
   });

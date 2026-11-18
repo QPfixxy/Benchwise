@@ -3,7 +3,7 @@
 const { newKey, hashKey, bearer } = require('./keys');
 const { verifyPassword, dummyVerify } = require('./passwords');
 
-const SESSION_COOKIE = 'bwh_session';
+const SESSION_COOKIE = 'bw_session';
 
 /** Fixed-window limiter per key (IP, username...). In memory: per instance. */
 function rateLimiter({ max, windowMs, now = Date.now }) {

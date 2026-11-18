@@ -136,6 +136,8 @@ A locked unit stays locked with its drive removed, because Autopilot registratio
 
 ## 3.0 and later: Benchwise Hub (site server)
 
+> **Updated design:** [docs/hub/DESIGN.md](docs/hub/DESIGN.md). A **site server** with its own PostgreSQL runs at each facility; sites push their records to one central **Hub** over its API, with hash-chain proof that the copies match. The first deployment is a standalone site server at one warehouse, alongside Aiken. The notes below are the original wish list, still the goal.
+
 A self-hosted server for a site, quick to deploy, that every bench and Benchwise USB stick connects to. The goals are one source of truth for every unit tested, no stale copies of the app on the floor, and proof that every unit went through the full procedure.
 
 **Deployment: up in minutes on hardware you already have**

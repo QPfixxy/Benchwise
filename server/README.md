@@ -1,4 +1,6 @@
-# Benchwise Hub
+# Benchwise Server
+
+One codebase, two roles: a **site server** at each facility (built first) and the central **Hub** (next phase). See the design.
 
 The central record for every unit Benchwise tests, across facilities: benches and USB sticks send their reports here, staff search them in a browser, and a WMS or Tableau pulls them through the API. Design and decisions: [docs/hub/DESIGN.md](../docs/hub/DESIGN.md).
 
@@ -17,16 +19,28 @@ The installer sets up PostgreSQL, nginx (HTTPS) and Node.js 22, creates the data
 
 To upgrade, pull the new version and run the same command again. Passwords, certificates and data are kept.
 
-To use your company's certificate, place it at `/etc/benchwise-hub/tls/hub.crt` and its key at `hub.key` (PEM, full chain), then run `sudo systemctl reload nginx`.
+**Two networks** (like the Aiken server: a company side and a floor/test side):
+
+```bash
+sudo ./deploy/install.sh --company-ip 10.1.0.20 --floor-ip 172.16.0.2
+```
+
+- Staff pages, search and administration answer only on the company address.
+- Benches and sticks upload only to the floor address.
+- Traffic is never routed between the two networks.
+
+The choice is remembered for upgrades; `--one-network` switches back.
+
+To use your company's certificate, place it at `/etc/benchwise-server/tls/server.crt` and its key at `server.key` (PEM, full chain), then run `sudo systemctl reload nginx`.
 
 ## Administration
 
 ```bash
-sudo benchwise-hub create-site DAL "Dallas"        # a facility
-sudo benchwise-hub create-station DAL "Bench 1"    # a bench or stick; prints its key once
-sudo benchwise-hub create-admin alice              # another administrator; prints a password once
-sudo benchwise-hub verify DAL                      # check a site's tamper-evidence chain
-journalctl -u benchwise-hub -f                     # logs
+sudo benchwise-server create-site DAL "Dallas"        # a facility
+sudo benchwise-server create-station DAL "Bench 1"    # a bench or stick; prints its key once
+sudo benchwise-server create-admin alice              # another administrator; prints a password once
+sudo benchwise-server verify DAL                      # check a site's tamper-evidence chain
+journalctl -u benchwise-server -f                     # logs
 ```
 
 Sites, stations, users and integration keys can also be managed in the web interface under **Administration**.
@@ -47,17 +61,17 @@ Create an integration key under **Administration → Integrations**, optionally 
 
 | Path | What |
 |---|---|
-| `/opt/benchwise-hub` | The application |
-| `/etc/benchwise-hub/hub.env` | Service settings and the database password (readable by the service only) |
-| `/etc/benchwise-hub/owner.env` | Schema owner's password, used for upgrades (root only) |
-| `/etc/benchwise-hub/tls/` | Certificate and key |
-| `/var/lib/benchwise-hub/files` | Report PDFs |
-| `/var/backups/benchwise-hub` | Nightly database and file backups, kept 14 days |
+| `/opt/benchwise-server` | The application |
+| `/etc/benchwise-server/server.env` | Service settings and the database password (readable by the service only) |
+| `/etc/benchwise-server/owner.env` | Schema owner's password, used for upgrades (root only) |
+| `/etc/benchwise-server/tls/` | Certificate and key |
+| `/var/lib/benchwise-server/files` | Report PDFs |
+| `/var/backups/benchwise-server` | Nightly database and file backups, kept 14 days |
 
 ## Development
 
 ```bash
 cd hub && npm install
 npm test                                          # unit tests
-HUB_TEST_DATABASE_URL=postgres://… npm test       # plus the integration tests (empty database)
+BW_TEST_DATABASE_URL=postgres://… npm test       # plus the integration tests (empty database)
 ```

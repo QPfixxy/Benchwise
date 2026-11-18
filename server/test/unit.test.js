@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { canonicalJson, sha256, chainHash, validateRecord, extractFields, isPdf } = require('../src/records');
+const { canonicalJson, sha256, chainHash, validateRecord, extractFields } = require('../src/records');
 const { newKey, hashKey, bearer } = require('../src/keys');
 const { hashPassword, verifyPassword, checkStrength } = require('../src/passwords');
 const { rateLimiter, parseCookies, sessionCookie } = require('../src/auth');
@@ -75,12 +75,6 @@ test('searchable fields are copied out of a Benchwise record', () => {
   assert.deepEqual([old.serial, old.profile, old.mdmStatus, old.malwareStatus], ['OLD1', 'full', 'na', null]);
 });
 
-test('PDF sniffing', () => {
-  assert.equal(isPdf(Buffer.from('%PDF-1.7\n...')), true);
-  assert.equal(isPdf(Buffer.from('<html>')), false);
-  assert.equal(isPdf('%PDF-'), false, 'must be bytes');
-});
-
 test('keys: shown once, stored as a hash, recognised by kind', () => {
   const s = newKey('station');
   assert.match(s.key, /^bws_[A-Za-z0-9_-]{43}$/);
@@ -116,9 +110,9 @@ test('rate limiter: only counts hits; blocks within the window, then resets', ()
 });
 
 test('cookies and config', () => {
-  assert.deepEqual(parseCookies('a=1; bwh_session=bwx_abc%3D; b=2'), { a: '1', bwh_session: 'bwx_abc=', b: '2' });
+  assert.deepEqual(parseCookies('a=1; bw_session=bwx_abc%3D; b=2'), { a: '1', bw_session: 'bwx_abc=', b: '2' });
   const c = sessionCookie('bwx_t', { hours: 12 });
   for (const part of ['HttpOnly', 'SameSite=Strict', 'Secure', 'Path=/', 'Max-Age=43200']) assert.ok(c.includes(part), part);
-  const cfg = loadConfig({ HUB_LISTEN: '0.0.0.0:9000', HUB_SESSION_HOURS: '1000' });
+  const cfg = loadConfig({ BW_LISTEN: '0.0.0.0:9000', BW_SESSION_HOURS: '1000' });
   assert.deepEqual([cfg.host, cfg.port, cfg.sessionHours, cfg.secureCookies], ['0.0.0.0', 9000, 168, true]);
 });

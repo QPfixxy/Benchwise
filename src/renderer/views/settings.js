@@ -146,7 +146,7 @@ export default {
   },
 };
 
-/** Benchwise Hub: where saved reports are sent (central records). */
+/** Benchwise server: the facility's server that saved records are sent to. */
 function hubCard(ctx, input, field) {
   const status = el('p', { class: 'muted small' }, '');
   const testLine = el('p', { class: 'small' });
@@ -173,14 +173,14 @@ function hubCard(ctx, input, field) {
   const node = el(
     'section',
     { class: 'card' },
-    el('h2', {}, 'Benchwise Hub'),
-    el('p', { class: 'muted small' }, 'Saved reports are queued and sent to your central Hub in the background. Testing never waits for the network.'),
-    field('Hub address', input('hubUrl', { placeholder: 'https://hub.example.local', spellcheck: 'false' })),
-    field('Station key', input('hubKey', { type: 'password', placeholder: 'bws_…', autocomplete: 'off', spellcheck: 'false' }), 'From the Hub: Administration → Stations → Enroll.'),
+    el('h2', {}, 'Benchwise server'),
+    el('p', { class: 'muted small' }, "Saved records are queued and sent to your facility's Benchwise server in the background. Testing never waits for the network."),
+    field('Server address', input('serverUrl', { placeholder: 'https://benchwise.example.local', spellcheck: 'false' })),
+    field('Station key', input('serverKey', { type: 'password', placeholder: 'bws_…', autocomplete: 'off', spellcheck: 'false' }), 'From the server: Administration → Stations → Enroll.'),
     field(
       'Certificate fingerprint (SHA-256)',
-      input('hubFingerprint', { placeholder: 'Only for a self-signed Hub certificate', spellcheck: 'false' }),
-      'The installer prints it. Leave empty if the Hub uses a certificate your PCs already trust.',
+      input('serverFingerprint', { placeholder: 'Only for a self-signed server certificate', spellcheck: 'false' }),
+      'The server installer prints it. Leave empty if the server uses a certificate your PCs already trust.',
     ),
     el(
       'div',

@@ -19,7 +19,7 @@ const { detectEnvironment } = require('./intake/environment');
 const { runMdmCheck, loadKnownTenants, mdmVerdict } = require('./intake/mdm');
 const { runDefenderScan, malwareVerdict } = require('./intake/defender');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
-const { Settings, resolveDataDir, classifyStorage, detectStick, hubConfig } = require('./settings');
+const { Settings, resolveDataDir, classifyStorage, detectStick, serverConfig } = require('./settings');
 const { Outbox } = require('./hub/outbox');
 const { hubRequest } = require('./hub/client');
 const { ReportStore, buildAudit } = require('./reports/store');
@@ -260,15 +260,15 @@ function registerIpc() {
   });
 
   // Benchwise Hub: queue status, connection test, retry now.
-  handle('hub:status', async () => ({ ...(await outbox.status()), fromSiteCmd: Boolean(hubConfig(settings.get())?.fromEnv) }));
+  handle('hub:status', async () => ({ ...(await outbox.status()), fromSiteCmd: Boolean(serverConfig(settings.get())?.fromEnv) }));
   handle('hub:retry', () => outbox.kick());
   handle('hub:test', async () => {
-    const cfg = hubConfig(settings.get());
-    if (!cfg) return { ok: false, message: 'Enter the Hub address and station key first.' };
+    const cfg = serverConfig(settings.get());
+    if (!cfg) return { ok: false, message: 'Enter the server address and station key first.' };
     try {
       const r = await hubRequest({ ...cfg, path: '/api/v1/station', netFetch: net.fetch, timeoutMs: 15000 });
       if (r.status === 200) return { ok: true, message: `Connected: "${r.json.station}" at ${r.json.site.code} (${r.json.site.name}).` };
-      return { ok: false, message: r.status === 401 ? 'The Hub rejected this station key.' : `The Hub answered ${r.status}: ${r.json?.error || ''}` };
+      return { ok: false, message: r.status === 401 ? 'The server rejected this station key.' : `The server answered ${r.status}: ${r.json?.error || ''}` };
     } catch (err) {
       return { ok: false, message: err.message };
     }
@@ -294,10 +294,9 @@ function registerIpc() {
     const audit = buildAudit({ input: input || {}, hardware, settings: settings.get(), app: appInfo() });
     // Queue for the Hub (if one is set up). Never blocks or fails the save.
     const queueForHub = async (saved) => {
-      if (!outbox || !hubConfig(settings.get())) return null;
+      if (!outbox || !serverConfig(settings.get())) return null;
       try {
-        const pdf = saved.pdfPath ? await fsp.readFile(saved.pdfPath) : null;
-        await outbox.enqueue(audit, pdf);
+        await outbox.enqueue(audit); // records only: servers never store PDFs
         return 'queued';
       } catch (err) {
         console.error('[benchwise] hub queue failed:', err.message);
@@ -645,7 +644,7 @@ if (!smokeArg && !app.requestSingleInstanceLock()) {
     lockDownSessions();
     outbox = new Outbox({
       dir: path.join(settings.dataDir, 'outbox'),
-      config: () => hubConfig(settings.get()),
+      config: () => serverConfig(settings.get()),
       send: (cfg, body) => hubRequest({ ...cfg, method: 'POST', path: '/api/v1/audits', body, netFetch: net.fetch }),
       onChange: () => mainWindow?.webContents.send('hub:changed'),
     });

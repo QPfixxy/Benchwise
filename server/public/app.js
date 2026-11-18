@@ -1,4 +1,4 @@
-// Benchwise Hub web interface. Uses the same JSON API as integrations.
+// Benchwise Server web interface. Uses the same JSON API as integrations.
 // All data is inserted as text (never HTML), so nothing in a record can
 // inject markup.
 
@@ -151,7 +151,7 @@ async function auditPage(view, id) {
   const raw = el('pre', { class: 'json hidden' }, JSON.stringify(r, null, 2));
   fill(
     view,
-    el('div', { class: 'row' }, el('a', { class: 'btn', href: '#/' }, '← Audits'), a.hasPdf ? el('a', { class: 'btn primary', href: `/api/v1/audits/${a.id}/pdf`, target: '_blank', rel: 'noopener' }, 'Open PDF') : null),
+    el('div', { class: 'row' }, el('a', { class: 'btn', href: '#/' }, '← Audits')),
     el('h1', {}, `${a.serial || a.assetTag || 'No serial'} `, badge(a.overall)),
     el('p', { class: 'muted' }, `${[a.manufacturer, a.model].filter(Boolean).join(' ')} · ${a.site} · ${a.station} · ${when(a.completedAt)}`),
     el(

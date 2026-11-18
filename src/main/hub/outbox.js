@@ -2,10 +2,10 @@
 
 // The outbox: every saved report is queued here and sent to the Benchwise Hub
 // in the background. Saving never waits for the network: a unit can be
-// tested and shut down with the Hub unreachable; the stick catches up later.
+// tested and shut down with the server unreachable; the stick catches up later.
 //
-//   <data>/outbox/pending/<id>.json   waiting to be sent ({ record, pdf })
-//   <data>/outbox/sent/<id>.json      accepted by the Hub (pruned after 30 days)
+//   <data>/outbox/pending/<id>.json   waiting to be sent ({ record })
+//   <data>/outbox/sent/<id>.json      accepted by the server (pruned after 30 days)
 //   <data>/outbox/failed/<id>.json    refused for good (+ <id>.reason.txt)
 //
 // Hub answers:  201/200 sent · 400/409/413 refused (kept, never retried)
@@ -43,12 +43,12 @@ class Outbox {
     }
   }
 
-  /** Queues one saved report. Atomic: a half-written file is never sent. */
-  async enqueue(record, pdf = null) {
+  /** Queues one saved record. Atomic: a half-written file is never sent. */
+  async enqueue(record) {
     await fs.mkdir(this.#p('pending'), { recursive: true });
     const file = this.#p('pending', `${record.id}.json`);
     const tmp = `${file}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify({ queuedAt: new Date(this.now()).toISOString(), record, ...(pdf ? { pdf: pdf.toString('base64') } : {}) }));
+    await fs.writeFile(tmp, JSON.stringify({ queuedAt: new Date(this.now()).toISOString(), record }));
     await fs.rename(tmp, file);
     this.kick();
   }
@@ -96,22 +96,22 @@ class Outbox {
       }
       let res;
       try {
-        res = await this.send(cfg, { record: body.record, ...(body.pdf ? { pdf: body.pdf } : {}) });
+        res = await this.send(cfg, { record: body.record });
       } catch (err) {
-        return this.#retryLater(err.code === 'CERT_MISMATCH' ? err.message : `Hub unreachable: ${err.message}`);
+        return this.#retryLater(err.code === 'CERT_MISMATCH' ? err.message : `Server unreachable: ${err.message}`);
       }
       if (res.status === 200 || res.status === 201) {
         await this.#park(f, 'sent');
         this.last = { sentAt: new Date(this.now()).toISOString(), error: null, nextAttemptAt: null };
         this.onChange();
       } else if ([400, 409, 413, 422].includes(res.status)) {
-        await this.#park(f, 'failed', `${res.status}: ${res.json?.error || 'refused by the Hub'}`);
-        this.last.error = `A report was refused by the Hub (${res.status}: ${res.json?.error || 'refused'}).`;
+        await this.#park(f, 'failed', `${res.status}: ${res.json?.error || 'refused by the server'}`);
+        this.last.error = `A report was refused by the server (${res.status}: ${res.json?.error || 'refused'}).`;
         this.onChange();
       } else if (res.status === 401 || res.status === 403) {
-        return this.#retryLater('The Hub rejected this station key. Check the key in Settings (or site.cmd).');
+        return this.#retryLater('The server rejected this station key. Check the key in Settings (or site.cmd).');
       } else {
-        return this.#retryLater(`The Hub answered ${res.status}; will retry.`);
+        return this.#retryLater(`The server answered ${res.status}; will retry.`);
       }
     }
     this.retryMs = 0;

@@ -1,17 +1,17 @@
 [Unit]
-Description=Benchwise Hub
+Description=Benchwise Server
 Documentation=https://github.com/QPfixxy/Benchwise/blob/main/docs/hub/DESIGN.md
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=benchwise-hub
-Group=benchwise-hub
-EnvironmentFile=/etc/benchwise-hub/hub.env
+User=benchwise-server
+Group=benchwise-server
+EnvironmentFile=/etc/benchwise-server/server.env
 Environment=NODE_ENV=production
-WorkingDirectory=/opt/benchwise-hub
-ExecStart=/usr/bin/node /opt/benchwise-hub/src/server.js
+WorkingDirectory=/opt/benchwise-server
+ExecStart=/usr/bin/node /opt/benchwise-server/src/server.js
 Restart=on-failure
 RestartSec=3
 
@@ -19,7 +19,7 @@ RestartSec=3
 # directories, can't gain privileges and has no capabilities at all.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/benchwise-hub
+ReadWritePaths=/var/lib/benchwise-server
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

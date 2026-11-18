@@ -1,7 +1,7 @@
 {
-  "name": "benchwise-hub",
+  "name": "benchwise-server",
   "version": "0.1.0",
-  "description": "Benchwise Hub: central records for Benchwise audits across facilities.",
+  "description": "Benchwise Server: central records for Benchwise audits across facilities.",
   "private": true,
   "license": "GPL-3.0-only",
   "main": "src/server.js",

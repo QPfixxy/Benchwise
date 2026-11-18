@@ -5,7 +5,7 @@ const path = require('node:path');
 const Fastify = require('fastify');
 const { loadConfig } = require('./config');
 const { createPool, tx } = require('./db');
-const { validateRecord, isPdf } = require('./records');
+const { validateRecord } = require('./records');
 const store = require('./store');
 const auth = require('./auth');
 const { newKey } = require('./keys');
@@ -26,7 +26,15 @@ const fail = (status, message) => {
   throw new HttpError(status, message);
 };
 
-function buildApp({ pool, config = loadConfig(), files = store.fileStore(config.filesDir), logger = true } = {}) {
+/**
+ * The web application for one network side:
+ *   'floor'  station uploads only (the floor / test network)
+ *   'staff'  web pages, search, exports, administration (the company network)
+ *   'both'   everything (a server on a single network)
+ */
+function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } = {}) {
+  const floor = side === 'floor' || side === 'both';
+  const staff = side === 'staff' || side === 'both';
   const https = config.tlsCert && config.tlsKey ? { cert: fs.readFileSync(config.tlsCert), key: fs.readFileSync(config.tlsKey), minVersion: 'TLSv1.2' } : null;
   const app = Fastify({
     https,
@@ -98,12 +106,12 @@ function buildApp({ pool, config = loadConfig(), files = store.fileStore(config.
     return { ok: true, version, migrations: r.rows[0].n };
   });
 
-  for (const [route, [file, type]] of Object.entries(STATIC)) {
-    const body = fs.readFileSync(path.join(PUBLIC, file));
-    app.get(route, async (req, reply) => reply.type(type).header('Cache-Control', 'no-cache').send(body));
-  }
+  if (floor) registerFloor();
+  if (staff) registerStaff();
+  return app;
 
-  // ------------------------------------------------------------ stations
+  // ------------------------------------------------------------ floor side: stations
+  function registerFloor() {
 
   app.get('/api/v1/station', async (req) => {
     const st = await principal(req, { station: true });
@@ -119,24 +127,18 @@ function buildApp({ pool, config = loadConfig(), files = store.fileStore(config.
           type: 'object',
           required: ['record'],
           additionalProperties: false,
-          properties: { record: { type: 'object' }, pdf: { type: 'string', maxLength: config.maxUploadMb * 1024 * 1024 } },
+          properties: { record: { type: 'object' } },
         },
       },
     },
     async (req, reply) => {
       const st = await principal(req, { station: true });
-      const { record, pdf } = req.body;
+      const { record } = req.body;
       const problem = validateRecord(record);
       if (problem) fail(400, `Invalid record: ${problem}`);
-      let pdfSha = null;
-      if (pdf) {
-        const buf = Buffer.from(pdf, 'base64');
-        if (!isPdf(buf)) fail(400, 'pdf is not a PDF file');
-        pdfSha = await files.put(buf);
-      }
       let res;
       try {
-        res = await store.insertAudit(pool, { record, station: st, pdfSha });
+        res = await store.insertAudit(pool, { record, station: st });
       } catch (err) {
         if (err.code !== '23505') throw err; // two uploads of the same record at once
         res = { status: 'duplicate', id: record.id };
@@ -145,6 +147,14 @@ function buildApp({ pool, config = loadConfig(), files = store.fileStore(config.
       return reply.code(res.status === 'created' ? 201 : 200).send(res);
     },
   );
+  }
+
+  // ------------------------------------------------------------ staff side
+  function registerStaff() {
+  for (const [route, [file, type]] of Object.entries(STATIC)) {
+    const body = fs.readFileSync(path.join(PUBLIC, file));
+    app.get(route, async (req, reply) => reply.type(type).header('Cache-Control', 'no-cache').send(body));
+  }
 
   // ------------------------------------------------------------ reading (integrations and staff)
 
@@ -188,15 +198,6 @@ function buildApp({ pool, config = loadConfig(), files = store.fileStore(config.
   app.get('/api/v1/audits/:id', { schema: idParam }, async (req) => {
     const p = await reader(req);
     return (await store.getAudit(pool, req.params.id, { siteIds: p.siteIds })) || fail(404, 'No such audit.');
-  });
-
-  app.get('/api/v1/audits/:id/pdf', { schema: idParam }, async (req, reply) => {
-    const p = await reader(req);
-    const a = await store.getAudit(pool, req.params.id, { siteIds: p.siteIds });
-    const file = a?.pdfSha256 && files.path(a.pdfSha256);
-    if (!file || !fs.existsSync(file)) fail(404, 'No PDF for this audit.');
-    const name = `${(a.serial || a.id).replace(/[^A-Za-z0-9._-]/g, '-')}.pdf`;
-    return reply.type('application/pdf').header('Content-Disposition', `inline; filename="${name}"`).send(fs.createReadStream(file));
   });
 
   app.get('/api/v1/units/:serial', { schema: { params: { type: 'object', properties: { serial: { type: 'string', maxLength: 64 } } } } }, async (req) => {
@@ -393,22 +394,28 @@ function buildApp({ pool, config = loadConfig(), files = store.fileStore(config.
     const site = await siteByCode(req.params.code);
     return { site: site.code, ...(await store.verifyChain(pool, site.id)) };
   });
-
-  return app;
+  }
 }
 
 async function main() {
   const config = loadConfig();
   const pool = createPool(config.databaseUrl);
-  const app = buildApp({ pool, config });
+  // Two networks: staff side and floor side on separate addresses.
+  // One network (e.g. directly on an existing warehouse network): both on one.
+  const apps = config.floor
+    ? [
+        [buildApp({ pool, config, side: 'staff' }), config.host, config.port],
+        [buildApp({ pool, config, side: 'floor' }), config.floor.host, config.floor.port],
+      ]
+    : [[buildApp({ pool, config, side: 'both' }), config.host, config.port]];
   const stop = async () => {
-    await app.close();
+    await Promise.all(apps.map(([a]) => a.close()));
     await pool.end();
     process.exit(0);
   };
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
-  await app.listen({ host: config.host, port: config.port });
+  for (const [a, host, port] of apps) await a.listen({ host, port });
   if (config.tlsCert && config.httpRedirectPort) {
     // Plain HTTP only redirects to HTTPS (nothing is served unencrypted).
     const http = require('node:http');

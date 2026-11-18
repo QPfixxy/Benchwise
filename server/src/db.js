@@ -7,8 +7,8 @@ const { Pool } = require('pg');
 const MIGRATIONS = path.join(__dirname, 'migrations');
 
 function createPool(connectionString, { max = 10 } = {}) {
-  if (!connectionString) throw new Error('No database URL configured (HUB_DATABASE_URL).');
-  return new Pool({ connectionString, max, idleTimeoutMillis: 30000, application_name: 'benchwise-hub' });
+  if (!connectionString) throw new Error('No database URL configured (BW_DATABASE_URL).');
+  return new Pool({ connectionString, max, idleTimeoutMillis: 30000, application_name: 'benchwise-server' });
 }
 
 /** Runs one function in a transaction; rolls back on any error. */
@@ -49,8 +49,8 @@ async function migrate(pool, { dir = MIGRATIONS, log = () => {} } = {}) {
   }
   // The service's role reads which migrations ran (for /healthz).
   await pool.query(`DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'benchwise_hub_app') THEN
-      GRANT SELECT ON schema_migrations TO benchwise_hub_app;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'benchwise_server_app') THEN
+      GRANT SELECT ON schema_migrations TO benchwise_server_app;
     END IF; END $$`);
   return applied;
 }

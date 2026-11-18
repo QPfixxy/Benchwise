@@ -1,8 +1,8 @@
 'use strict';
 
-// Talks to a Benchwise Hub. Two ways to trust the Hub's certificate:
+// Talks to a Benchwise Hub. Two ways to trust the server's certificate:
 //
-//  - Pinned (a SHA-256 fingerprint is configured): for the Hub's self-signed
+//  - Pinned (a SHA-256 fingerprint is configured): for the server's self-signed
 //    certificate. The TLS connection is opened and the certificate checked
 //    BEFORE any byte of the request (including the station key) is sent.
 //  - Otherwise the operating system's trusted certificates, through
@@ -38,14 +38,14 @@ function pinnedRequest({ url, path, fingerprint, method, headers, body, timeoutM
     });
     socket.once('timeout', () => {
       socket.destroy();
-      done(reject, new Error('Connection to the Hub timed out.'));
+      done(reject, new Error('Connection to the server timed out.'));
     });
     socket.once('error', (err) => done(reject, err));
     socket.once('secureConnect', () => {
       const got = normFp(socket.getPeerCertificate()?.fingerprint256);
       if (got !== normFp(fingerprint)) {
         socket.destroy();
-        return done(reject, Object.assign(new Error("The Hub's certificate doesn't match the configured fingerprint."), { code: 'CERT_MISMATCH' }));
+        return done(reject, Object.assign(new Error("The server's certificate doesn't match the configured fingerprint."), { code: 'CERT_MISMATCH' }));
       }
       const req = https.request(
         { host: u.hostname, port, path: `${u.pathname.replace(/\/$/, '')}${path}`, method, headers, createConnection: () => socket, timeout: timeoutMs },
@@ -56,7 +56,7 @@ function pinnedRequest({ url, path, fingerprint, method, headers, body, timeoutM
           res.on('end', () => done(resolve, { status: res.statusCode, text: data }));
         },
       );
-      req.on('timeout', () => req.destroy(new Error('The Hub did not answer in time.')));
+      req.on('timeout', () => req.destroy(new Error('The server did not answer in time.')));
       req.on('error', (err) => done(reject, err));
       req.end(body);
     });
@@ -64,11 +64,11 @@ function pinnedRequest({ url, path, fingerprint, method, headers, body, timeoutM
 }
 
 /**
- * One request to the Hub. Resolves { status, json } for any HTTP answer;
- * rejects only when the Hub couldn't be reached (or isn't who it should be).
+ * One request to the server. Resolves { status, json } for any HTTP answer;
+ * rejects only when the server couldn't be reached (or isn't who it should be).
  */
 async function hubRequest({ url, key, fingerprint, method = 'GET', path, body, timeoutMs = 30000, netFetch }) {
-  if (!/^https:\/\//i.test(url || '')) throw new Error('The Hub address must start with https://');
+  if (!/^https:\/\//i.test(url || '')) throw new Error('The server address must start with https://');
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const headers = {
     authorization: `Bearer ${key}`,

@@ -2,14 +2,15 @@
 'use strict';
 
 // Server-side administration. Run on the Hub server, e.g.:
-//   sudo benchwise-hub migrate
-//   sudo benchwise-hub create-admin alice
-//   sudo benchwise-hub create-site DAL "Dallas"
-//   sudo benchwise-hub create-station DAL "Bench 1"
-//   sudo benchwise-hub verify DAL
+//   sudo benchwise-server migrate
+//   sudo benchwise-server create-admin alice
+//   sudo benchwise-server create-site DAL "Dallas"
+//   sudo benchwise-server create-station DAL "Bench 1"
+//   sudo benchwise-server verify DAL
+//   sudo benchwise-server maintain           (daily, from cron / a scheduled task)
 //
-// `migrate` needs the schema owner's connection (HUB_OWNER_DATABASE_URL);
-// everything else uses the service's (HUB_DATABASE_URL).
+// `migrate` and `maintain` need the schema owner's connection (BW_OWNER_DATABASE_URL);
+// everything else uses the service's (BW_DATABASE_URL).
 
 const crypto = require('node:crypto');
 const { createPool, migrate } = require('./db');
@@ -17,16 +18,28 @@ const { newKey } = require('./keys');
 const { hashPassword } = require('./passwords');
 const { verifyChain, log } = require('./store');
 
-const USAGE = `Usage: benchwise-hub <command>
+const USAGE = `Usage: benchwise-server <command>
   migrate                         apply database migrations (as the schema owner)
   create-admin <username>         create an administrator; prints a generated password once
   create-site <CODE> <name>       add a facility (CODE: 2-16 letters, digits, dashes)
   create-station <CODE> <name>    enroll a station at a site; prints its key once
-  verify <CODE>                   check a site's tamper-evidence chain`;
+  verify <CODE>                   check a site's tamper-evidence chain
+  maintain                        daily upkeep: future yearly record partitions, expired sign-ins`;
 
 async function main([cmd, ...args]) {
+  if (cmd === 'maintain') {
+    const pool = createPool(process.env.BW_OWNER_DATABASE_URL || process.env.BW_DATABASE_URL, { max: 1 });
+    try {
+      const made = (await pool.query('SELECT benchwise_add_year_partitions(extract(year FROM now())::int + 5) AS n')).rows[0].n;
+      const gone = (await pool.query('DELETE FROM sessions WHERE expires_at < now()')).rowCount;
+      console.log(`Maintenance done: ${made} new yearly partition(s), ${gone} expired sign-in(s) removed.`);
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
   if (cmd === 'migrate') {
-    const pool = createPool(process.env.HUB_OWNER_DATABASE_URL || process.env.HUB_DATABASE_URL, { max: 1 });
+    const pool = createPool(process.env.BW_OWNER_DATABASE_URL || process.env.BW_DATABASE_URL, { max: 1 });
     try {
       const applied = await migrate(pool, { log: (m) => console.log(m) });
       console.log(applied.length ? `${applied.length} migration(s) applied.` : 'Database is up to date.');
@@ -35,7 +48,7 @@ async function main([cmd, ...args]) {
     }
     return;
   }
-  const pool = createPool(process.env.HUB_DATABASE_URL, { max: 1 });
+  const pool = createPool(process.env.BW_DATABASE_URL, { max: 1 });
   try {
     switch (cmd) {
       case 'create-admin': {
