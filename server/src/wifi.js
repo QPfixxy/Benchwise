@@ -19,6 +19,8 @@ function checkWifi(w) {
   const password = typeof w?.password === 'string' ? w.password : '';
   if (!ssid || Buffer.byteLength(ssid, 'utf8') > 32) errors.push('Wi-Fi name (SSID): 1-32 characters.');
   if (/[\u0000-\u001f]/.test(ssid)) errors.push('Wi-Fi name: no control characters.');
+  // The name goes into the stick's site.cmd: characters that break batch files are refused.
+  if (/[%!"^&<>|]/.test(ssid)) errors.push('Wi-Fi name: these characters can\'t be used on sticks: % ! " ^ & < > |');
   if (!SECURITY[security]) errors.push('Choose the Wi-Fi security: WPA2, WPA3 or open.');
   if (security !== 'open') {
     // WPA passphrases are 8-63 printable ASCII characters.

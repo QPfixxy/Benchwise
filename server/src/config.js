@@ -32,7 +32,10 @@ function loadConfig(env = process.env) {
     // Setup wizard: where the root helper picks up requests and reports back,
     // and the certificate whose fingerprint the wizard shows.
     requestsDir: env.BW_REQUESTS_DIR || '/var/lib/benchwise-server/requests',
-    statusFile: env.BW_STATUS_FILE || '/var/lib/benchwise-server/apply-status.json',
+    statusDir: env.BW_STATUS_DIR || '/var/lib/benchwise-server/status',
+    // The Benchwise build that sticks get (app.zip), kept by the server.
+    sticksDir: env.BW_STICKS_DIR || '/var/lib/benchwise-server/sticks',
+    releasesRepo: env.BW_RELEASES_REPO || 'QPfixxy/Benchwise',
     certPath: env.BW_CERT_PATH || '/etc/benchwise-server/tls/server.crt',
     sessionHours: Math.min(Math.max(Number(env.BW_SESSION_HOURS) || 12, 1), 168),
     maxUploadMb: Math.min(Math.max(Number(env.BW_MAX_UPLOAD_MB) || 5, 1), 50),

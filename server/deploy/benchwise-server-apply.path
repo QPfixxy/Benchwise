@@ -2,8 +2,8 @@
 Description=Benchwise Server: watch for setup changes to apply
 
 [Path]
-# The web service drops a request here; the root helper applies it.
-PathExists=/var/lib/benchwise-server/requests/apply.json
+# The web service drops a job here (requests/<id>.json); the root helper runs it.
+PathExistsGlob=/var/lib/benchwise-server/requests/*.json
 Unit=benchwise-server-apply.service
 
 [Install]

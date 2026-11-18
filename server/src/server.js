@@ -12,6 +12,7 @@ const { newKey } = require('./keys');
 const { hashPassword, checkStrength } = require('./passwords');
 const setup = require('./setup');
 const wifiCfg = require('./wifi');
+const sticks = require('./sticks');
 const crypto = require('node:crypto');
 const { version } = require('../package.json');
 const yazl = require('yazl');
@@ -56,7 +57,8 @@ const fail = (status, message) => {
  *   'staff'  web pages, search, exports, administration (the company network)
  *   'both'   everything (a server on a single network)
  */
-function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } = {}) {
+// listDrives is injectable for tests (a CI machine has no USB stick to list).
+function buildApp({ pool, config = loadConfig(), side = 'both', logger = true, listDrives = sticks.listDrives } = {}) {
   const floor = side === 'floor' || side === 'both';
   const staff = side === 'staff' || side === 'both';
   const https = config.tlsCert && config.tlsKey ? { cert: fs.readFileSync(config.tlsCert), key: fs.readFileSync(config.tlsKey), minVersion: 'TLSv1.2' } : null;
@@ -134,6 +136,16 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
   if (staff) registerStaff();
   return app;
 
+  /** A root-helper job's status file, or null. */
+  function jobStatus(id) {
+    if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(path.join(config.statusDir, `${id}.json`), 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
   // ------------------------------------------------------------ first-run setup wizard
   // Open only while setup is pending (the installer stores a one-time code);
   // closed for good once it completes.
@@ -201,25 +213,23 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
         }
         await setup.setSetting(c, 'site.home', { siteId: site.rows[0].id, code: plan.site.code });
         await setup.setSetting(c, 'network', plan.network);
+        await setup.setSetting(c, 'certificate', { mode: plan.certificate.mode });
         if (plan.wifi) await setup.setSetting(c, 'sticks.wifi', { ...plan.wifi, updatedAt: new Date().toISOString() });
         await setup.setSetting(c, 'setup', { complete: true, completedAt: new Date().toISOString(), applyId: id });
         await store.log(c, plan.admin.username, 'setup.complete', { site: plan.site.code, network: plan.network.mode, certificate: plan.certificate.mode, wifi: Boolean(plan.wifi) });
       });
       tokens.clear();
       // Network and certificate need root: hand them to the apply helper.
-      setup.writeApplyRequest(config.requestsDir, { id, network: plan.network, certificate: plan.certificate });
+      setup.writeApplyRequest(config.requestsDir, { id, type: 'setup', network: plan.network, certificate: plan.certificate });
       const url = `https://${plan.network.mode === 'two' ? plan.network.companyIp : req.hostname.replace(/:\d+$/, '')}/`;
       return { ok: true, applyId: id, url };
     });
 
-    // Progress of the root helper; readable after setup too (no secrets in it).
+    // Progress of the root helper's setup job (no secrets in it).
     app.get('/api/v1/setup/progress', async () => {
-      try {
-        const st = JSON.parse(fs.readFileSync(config.statusFile, 'utf8'));
-        return { state: st.state, message: st.message || null, url: st.url || null, at: st.at };
-      } catch {
-        return { state: 'waiting' };
-      }
+      const id = (await setup.getSetting(pool, 'setup'))?.applyId;
+      const st = id && jobStatus(id);
+      return st ? { state: st.state, message: st.message || null, url: st.url || null, at: st.at } : { state: 'waiting' };
     });
   }
 
@@ -573,6 +583,139 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
       return { wifi: wifiCfg.publicView(stored) };
     },
   );
+
+  // ------------------------------------------------------------ USB sticks (made at this server)
+
+  const appZip = () => path.join(config.sticksDir, 'app.zip');
+
+  /** The address sticks reach this server on: the floor side, or the only network. */
+  async function stickDefaults() {
+    // The running mode wins over the wizard's saved choice: the installer can
+    // change it later (--one-network / --floor-ip), and then the setting is stale.
+    const net = (await setup.getSetting(pool, 'network')) || { mode: 'one' };
+    const twoNetworks = Boolean(config.floor) && net.mode === 'two';
+    const serverAddress = twoNetworks ? net.floorIp : setup.localInterfaces()[0]?.address || null;
+    const certMode = (await setup.getSetting(pool, 'certificate'))?.mode || 'generated';
+    let fingerprint = null;
+    if (certMode !== 'upload') {
+      try {
+        fingerprint = new crypto.X509Certificate(fs.readFileSync(config.certPath)).fingerprint256;
+      } catch {
+        fingerprint = null;
+      }
+    }
+    return { serverAddress, certMode, fingerprint };
+  }
+
+  app.get('/api/v1/sticks', async (req) => {
+    await admin(req);
+    const [build, drives, wifi, defaults] = await Promise.all([setup.getSetting(pool, 'sticks.app'), listDrives(), setup.getSetting(pool, 'sticks.wifi'), stickDefaults()]);
+    return { app: build && fs.existsSync(appZip()) ? build : null, drives, wifi: wifiCfg.publicView(wifi), defaults };
+  });
+
+  app.post('/api/v1/sticks/app/fetch', { schema: { body: { type: 'object', properties: { includePrerelease: { type: 'boolean' } } } } }, async (req) => {
+    const p = await admin(req);
+    fs.mkdirSync(config.sticksDir, { recursive: true });
+    const meta = await sticks.fetchRelease({ repo: config.releasesRepo, includePrerelease: Boolean(req.body?.includePrerelease), dest: appZip() });
+    const stored = { ...meta, at: new Date().toISOString() };
+    await setup.setSetting(pool, 'sticks.app', stored);
+    await store.log(pool, p.name, 'sticks.app', { version: meta.version, source: 'github', verified: meta.verified });
+    return { app: stored };
+  });
+
+  // Upload a build (the "-win-x64.zip" from a release), streamed to disk.
+  app.addContentTypeParser('application/zip', (req, payload, done) => done(null, payload));
+  app.put('/api/v1/sticks/app', { bodyLimit: 700 * 1024 * 1024 }, async (req) => {
+    const p = await admin(req);
+    const name = String(req.query?.name || '');
+    fs.mkdirSync(config.sticksDir, { recursive: true });
+    const tmp = `${appZip()}.upload`;
+    let size = 0;
+    const out = fs.createWriteStream(tmp, { mode: 0o640 });
+    try {
+      for await (const chunk of req.body) {
+        size += chunk.length;
+        if (size > 700 * 1024 * 1024) fail(413, 'The file is too large for a Benchwise build.');
+        if (!out.write(chunk)) await new Promise((r) => out.once('drain', r));
+      }
+      await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+      await sticks.inspectZip(tmp);
+    } catch (err) {
+      out.destroy();
+      fs.rmSync(tmp, { force: true });
+      if (err.statusCode) throw err;
+      fail(400, err.message);
+    }
+    fs.renameSync(tmp, appZip());
+    const meta = { version: (/Benchwise-(.+)-win-x64\.zip$/.exec(name) || [])[1] || 'uploaded', file: name || 'upload.zip', sha256: await sticks.sha256File(appZip()), source: 'upload', at: new Date().toISOString() };
+    await setup.setSetting(pool, 'sticks.app', meta);
+    await store.log(pool, p.name, 'sticks.app', { version: meta.version, source: 'upload', sha256: meta.sha256 });
+    return { app: meta };
+  });
+
+  app.post(
+    '/api/v1/sticks',
+    { schema: { body: { type: 'object', required: ['device'], properties: { device: { type: 'string', maxLength: 16 }, serial: { type: ['string', 'null'], maxLength: 128 }, name: { type: 'string', maxLength: 60 }, serverAddress: { type: 'string', maxLength: 253 } } } } },
+    async (req, reply) => {
+      const p = await admin(req);
+      const build = await setup.getSetting(pool, 'sticks.app');
+      if (!build || !fs.existsSync(appZip())) fail(409, 'Get the Benchwise build for sticks first.');
+      const drive = (await listDrives()).find((d) => d.name === req.body.device);
+      if (!drive) fail(404, 'That drive is no longer plugged in. Refresh the list.');
+      if (!drive.eligible) fail(400, `That drive can't be used: ${drive.why}.`);
+      const home = (await setup.getSetting(pool, 'site.home')) || null;
+      const site = home ? (await pool.query('SELECT id, code, name FROM sites WHERE id = $1', [home.siteId])).rows[0] : (await pool.query('SELECT id, code, name FROM sites ORDER BY id LIMIT 1')).rows[0];
+      if (!site) fail(409, 'Set up this facility first.');
+      const defaults = await stickDefaults();
+      const address = (req.body.serverAddress || defaults.serverAddress || '').trim();
+      if (!/^[A-Za-z0-9.-]{1,253}$/.test(address)) fail(400, 'Server address: an IP address or host name that sticks can reach.');
+      const wifi = await setup.getSetting(pool, 'sticks.wifi');
+
+      // Each stick is its own station: a lost stick can be revoked alone.
+      const count = (await pool.query("SELECT count(*)::int AS n FROM stations WHERE site_id = $1 AND name LIKE 'Stick %'", [site.id])).rows[0].n;
+      const stationName = (req.body.name || `Stick ${count + 1}`).trim();
+      const { key, prefix, hash } = newKey('station');
+      let stationId;
+      try {
+        stationId = (await pool.query('INSERT INTO stations (site_id, name, key_prefix, key_hash) VALUES ($1, $2, $3, $4) RETURNING id', [site.id, stationName, prefix, hash])).rows[0].id;
+      } catch (err) {
+        if (err.code === '23505') fail(409, `A station called "${stationName}" already exists.`);
+        throw err;
+      }
+      const id = crypto.randomUUID();
+      const serverUrl = `https://${address}`;
+      try {
+        setup.writeApplyRequest(config.requestsDir, {
+          id,
+          type: 'stick',
+          device: drive.name,
+          serial: drive.serial,
+          siteCmd: sticks.buildSiteCmd({ serverUrl, key, fingerprint: defaults.fingerprint, wifiName: wifi?.ssid }),
+          wifiXml: wifi ? wifiCfg.wlanProfileXml(wifi) : null,
+          readme: sticks.buildReadme({ site: `${site.code} · ${site.name}`, stationName, server: serverUrl, version: build.version, madeAt: new Date().toISOString() }),
+        });
+      } catch (err) {
+        await pool.query('UPDATE stations SET revoked_at = now() WHERE id = $1', [stationId]);
+        throw err;
+      }
+      await setup.setSetting(pool, `stickjob.${id.replace(/-/g, '')}`, { stationId, stationName, device: drive.name, model: drive.model, by: p.name });
+      await store.log(pool, p.name, 'stick.make', { station: stationName, drive: `${drive.model} ${drive.size}`, serial: drive.serial, keyPrefix: prefix });
+      return reply.code(202).send({ jobId: id, station: stationName });
+    },
+  );
+
+  app.get('/api/v1/sticks/jobs/:id', { schema: { params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } } } }, async (req) => {
+    await admin(req);
+    const st = jobStatus(req.params.id) || { state: 'queued' };
+    const key = `stickjob.${req.params.id.replace(/-/g, '')}`;
+    const job = await setup.getSetting(pool, key);
+    if (st.state === 'failed' && job && !job.revoked) {
+      // A stick that wasn't made mustn't leave a usable key behind.
+      await pool.query('UPDATE stations SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [job.stationId]);
+      await setup.setSetting(pool, key, { ...job, revoked: true });
+    }
+    return { state: st.state, step: st.step || null, message: st.message || null, drive: st.drive || null, station: job?.stationName || null };
+  });
 
   app.get('/api/v1/admin-log', async (req) => {
     await admin(req);

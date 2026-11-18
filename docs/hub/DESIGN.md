@@ -173,4 +173,11 @@ Upgrades: run the new installer, or approve a version at the Hub and the site se
     - name, security type (WPA2/WPA3/open) and hidden flag;
     - turned into the Windows Wi-Fi profile the launcher loads;
     - stations fetch the current one, so sticks pick up changes.
-- **Next:** Phase A step 3, making USB sticks at the site server (they get `wifi.xml` and `site.cmd` from these settings).
+  - **Phase A step 3, making USB sticks at the site server:**
+    - the Benchwise build comes from the latest GitHub release (SHA-256 checked against GitHub's digest), or an uploaded `-win-x64.zip` (checked to be a stick build, with no unsafe paths);
+    - Administration lists only removable drives, and never system disks or a drive the server booted from;
+    - **Make stick** erases the drive (exFAT, label BENCHWISE) and writes Benchwise, `site.cmd` (server address, its own station key, fingerprint, Wi-Fi name), `wifi.xml` and a README;
+    - the root helper checks the drive again before erasing (it must still be removable and non-system, with the same serial), and refuses, erasing nothing, a drive another program has open, naming that program;
+    - a stick that fails leaves no working key: its station is revoked.
+  - Tested on the Ubuntu VM with a real USB stick passed through: build fetched from GitHub, stick made in about 15 seconds, its key uploads, and a busy drive is refused.
+- **Next:** Phase A step 4, the Windows site-server setup; then Phase B, the Hub role.

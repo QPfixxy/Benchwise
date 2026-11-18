@@ -139,10 +139,11 @@ async function setSetting(db, key, value) {
 
 // ---------------------------------------------------------------- the root helper's inbox
 
-/** Hands the network/certificate part to the root helper (atomic write, owner-only). */
+/** Hands a job to the root helper: requests/<id>.json (atomic write, owner-only). */
 function writeApplyRequest(dir, request) {
+  if (!/^[0-9a-f-]{36}$/.test(request.id || '')) throw new Error('Job id must be a UUID.');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const file = path.join(dir, 'apply.json');
+  const file = path.join(dir, `${request.id}.json`);
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(request), { mode: 0o600 });
   fs.renameSync(tmp, file);

@@ -58,7 +58,8 @@ fi
 say "Installing packages (PostgreSQL, nginx, Node.js 22)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq postgresql nginx openssl ca-certificates curl gnupg >/dev/null
+# exfatprogs, util-linux, unzip, psmisc: making USB sticks (format, partition, unpack; fuser names a program holding a drive).
+apt-get install -y -qq postgresql nginx openssl ca-certificates curl gnupg exfatprogs util-linux unzip psmisc >/dev/null
 
 node_major() { node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || echo 0; }
 if [ "$(apt-cache policy nodejs | awk '/Candidate/{print $2}' | sed -E 's/^([0-9]+).*/\1/')" -ge 22 ] 2>/dev/null; then
@@ -82,7 +83,8 @@ id "$SVC_USER" >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /u
 install -d -m 0750 -o root -g "$SVC_USER" "$ETC"
 install -d -m 0755 -o root -g root "$ETC/tls"
 install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$DATA"
-install -d -m 0700 -o "$SVC_USER" -g "$SVC_USER" "$DATA/requests"
+install -d -m 0700 -o "$SVC_USER" -g "$SVC_USER" "$DATA/requests" "$DATA/sticks"
+install -d -m 0755 -o root -g root "$DATA/status"   # written by the root helper, read by the service
 install -d -m 0700 -o postgres -g postgres "$BACKUPS"
 
 # ------------------------------------------------------------------ database

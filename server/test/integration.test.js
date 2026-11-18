@@ -18,6 +18,7 @@ const { createPool, migrate } = require('../src/db');
 const { buildApp } = require('../src/server');
 const { newKey } = require('../src/keys');
 const { hashPassword } = require('../src/passwords');
+const yazl = require('yazl');
 
 const record = (over = {}) => ({
   schema: 'qudit.audit',
@@ -39,8 +40,14 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'bw-setup-'));
-  const config = { secureCookies: false, sessionHours: 12, maxUploadMb: 5, trustProxy: false, requestsDir: path.join(work, 'requests'), statusFile: path.join(work, 'status.json'), certPath: path.join(work, 'none.crt') };
+  const config = { secureCookies: false, sessionHours: 12, maxUploadMb: 5, trustProxy: false, requestsDir: path.join(work, 'requests'), statusDir: path.join(work, 'status'), sticksDir: path.join(work, 'sticks'), certPath: path.join(work, 'none.crt') };
   const app = buildApp({ pool, config, logger: false });
+  // The same server, with two pretend USB drives plugged in.
+  const fakeDrives = async () => [
+    { name: 'sdb', path: '/dev/sdb', sizeBytes: 32e9, size: '32.0 GB', model: 'SanDisk Ultra', serial: 'SER-1', label: null, mounted: [], eligible: true, why: null },
+    { name: 'sdc', path: '/dev/sdc', sizeBytes: 5e8, size: '0.5 GB', model: 'Tiny', serial: null, label: null, mounted: [], eligible: false, why: 'smaller than 1 GB' },
+  ];
+  const stickApp = buildApp({ pool, config, logger: false, listDrives: fakeDrives });
 
   const [dal, phx] = (await pool.query("INSERT INTO sites (code, name) VALUES ('DAL', 'Dallas'), ('PHX', 'Phoenix') RETURNING id")).rows.map((r) => r.id);
   const station = newKey('station');
@@ -234,8 +241,8 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     body.admin.confirm = body.admin.password;
     const ok = (await app.inject({ method: 'POST', url: '/api/v1/setup/apply', headers: { ...hdr, 'x-setup-token': token }, payload: body })).json();
     assert.equal(ok.ok, true);
-    const req = JSON.parse(fs.readFileSync(path.join(config.requestsDir, 'apply.json'), 'utf8'));
-    assert.deepEqual([req.id, req.network, req.certificate], [ok.applyId, { mode: 'one' }, { mode: 'generated' }]);
+    const req = JSON.parse(fs.readFileSync(path.join(config.requestsDir, `${ok.applyId}.json`), 'utf8'));
+    assert.deepEqual([req.type, req.network, req.certificate], ['setup', { mode: 'one' }, { mode: 'generated' }]);
     assert.ok(!JSON.stringify(req).includes('passphrase'), 'the root helper never gets the admin password');
     assert.equal((await pool.query("SELECT role FROM users WHERE username = 'alice'")).rows[0].role, 'admin');
     assert.equal((await pool.query("SELECT name FROM sites WHERE code = 'AUS'")).rows[0].name, 'Austin');
@@ -246,7 +253,8 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     assert.equal((await app.inject({ url: '/api/v1/setup/status' })).json().needed, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/v1/setup/verify', headers: hdr, payload: { code } })).statusCode, 409, 'the code is spent');
     assert.equal((await app.inject({ url: '/api/v1/setup/environment', headers: { 'x-setup-token': token } })).statusCode, 409);
-    fs.writeFileSync(config.statusFile, JSON.stringify({ id: ok.applyId, state: 'done', url: 'https://10.0.0.1/', at: 'now' }));
+    fs.mkdirSync(config.statusDir, { recursive: true });
+    fs.writeFileSync(path.join(config.statusDir, `${ok.applyId}.json`), JSON.stringify({ id: ok.applyId, state: 'done', url: 'https://10.0.0.1/', at: 'now' }));
 
     // Floor Wi-Fi after setup: admins change it (password never shown or logged);
     // stations fetch the current profile for their sticks.
@@ -270,6 +278,56 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     assert.equal((await app.inject({ url: '/api/v1/setup/progress' })).json().state, 'done');
   });
 
+  await t.test('USB sticks: build upload checked, one station per stick, failed stick revoked', async () => {
+    const login = await app.inject({ method: 'POST', url: '/api/v1/session', payload: { username: 'admin', password: 'a very long password' } });
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    const adm = { cookie, 'x-benchwise': '1' };
+    const make = (payload) => stickApp.inject({ method: 'POST', url: '/api/v1/sticks', headers: adm, payload });
+    assert.equal((await stickApp.inject({ url: '/api/v1/sticks' })).statusCode, 401);
+    assert.equal((await make({ device: 'sdb' })).statusCode, 409, 'no build yet');
+
+    const zipOf = (entries) => new Promise((resolve) => {
+      const z = new yazl.ZipFile();
+      for (const [n, d] of entries) z.addBuffer(Buffer.from(d), n);
+      const parts = [];
+      z.outputStream.on('data', (c) => parts.push(c)).on('end', () => resolve(Buffer.concat(parts)));
+      z.end();
+    });
+    const put = async (buf, name) => stickApp.inject({ method: 'PUT', url: `/api/v1/sticks/app?name=${name}`, headers: { ...adm, 'content-type': 'application/zip' }, payload: buf });
+    const bad = await put(await zipOf([['readme.txt', 'x']]), 'other.zip');
+    assert.equal(bad.statusCode, 400);
+    assert.match(bad.json().error || bad.payload, /stick build/);
+    const good = await put(await zipOf([['Benchwise.exe', 'MZ'], ['LAUNCH.CMD', '@echo off']]), 'Benchwise-2.5.0-beta.1-win-x64.zip');
+    assert.equal(good.statusCode, 200);
+    assert.equal(good.json().app.version, '2.5.0-beta.1');
+
+    const info = (await stickApp.inject({ url: '/api/v1/sticks', headers: { cookie } })).json();
+    assert.deepEqual(info.drives.map((d) => [d.name, d.eligible]), [['sdb', true], ['sdc', false]]);
+    assert.equal((await make({ device: 'sdc' })).statusCode, 400, 'too small');
+    assert.equal((await make({ device: 'sdz' })).statusCode, 404, 'not plugged in');
+    assert.equal((await make({ device: 'sdb', serverAddress: 'x"&calc' })).statusCode, 400);
+
+    const res = await make({ device: 'sdb', serverAddress: '172.16.0.2' });
+    assert.equal(res.statusCode, 202);
+    const { jobId, station: stationName } = res.json();
+    const job = JSON.parse(fs.readFileSync(path.join(config.requestsDir, `${jobId}.json`), 'utf8'));
+    assert.deepEqual([job.type, job.device, job.serial], ['stick', 'sdb', 'SER-1']);
+    assert.match(job.siteCmd, /set "BENCHWISE_SERVER_URL=https:\/\/172\.16\.0\.2"\r\n/);
+    assert.match(job.siteCmd, /set "WIFI_NAME=FLOOR-2"/);
+    assert.match(job.wifiXml, /WPA3SAE/);
+    const key = /BENCHWISE_SERVER_KEY=(bws_[^"]+)/.exec(job.siteCmd)[1];
+    assert.equal((await stickApp.inject({ method: 'POST', url: '/api/v1/audits', headers: as(key), payload: { record: record() } })).statusCode, 201, 'the stick key works');
+    assert.equal((await stickApp.inject({ url: `/api/v1/sticks/jobs/${jobId}`, headers: { cookie } })).json().state, 'queued');
+
+    fs.mkdirSync(config.statusDir, { recursive: true });
+    fs.writeFileSync(path.join(config.statusDir, `${jobId}.json`), JSON.stringify({ id: jobId, type: 'stick', state: 'failed', message: 'unplugged' }));
+    const st = (await stickApp.inject({ url: `/api/v1/sticks/jobs/${jobId}`, headers: { cookie } })).json();
+    assert.deepEqual([st.state, st.message, st.station], ['failed', 'unplugged', stationName]);
+    assert.equal((await stickApp.inject({ method: 'POST', url: '/api/v1/audits', headers: as(key), payload: { record: record() } })).statusCode, 401, 'a failed stick leaves no working key');
+    const logRow = (await pool.query("SELECT detail FROM admin_log WHERE action = 'stick.make' ORDER BY id DESC LIMIT 1")).rows[0].detail;
+    assert.ok(!JSON.stringify(logRow).includes(key), 'the key is never logged');
+  });
+
   await t.test('security headers and health', async () => {
     const res = await app.inject({ url: '/healthz' });
     assert.equal(res.json().ok, true);
@@ -278,5 +336,6 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
   });
 
   await app.close();
+  await stickApp.close();
   await pool.end();
 });

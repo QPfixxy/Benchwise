@@ -65,6 +65,18 @@ Create an integration key under **Administration → Integrations**, optionally 
 | `GET /api/v1/audits/<id>/report.pdf` | A compliance PDF of one record, drawn on demand |
 | `GET /api/v1/export.zip?site=…&from=YYYY-MM-DD&to=…` or `?serials=A,B,C` | A compliance export: one PDF per record plus `summary.csv` (up to 5,000 records; logged) |
 
+## Making USB sticks
+
+Under **Administration → USB sticks**:
+
+1. **Get the Benchwise build** once: *Get latest release* downloads the `-win-x64.zip` from GitHub and checks its SHA-256. Tick *include pre-releases* for betas. Or upload that ZIP yourself, if the server has no internet.
+2. **Plug a USB stick into the server** and click *Refresh*. Only removable drives are listed; system disks never are.
+3. Click **Make stick** and confirm. **The drive is erased.** It's formatted exFAT (label BENCHWISE) and gets Benchwise, the floor Wi-Fi profile, and a `site.cmd` with this server's address and **its own station key** ("Stick 1", "Stick 2", …). A lost stick can be revoked alone under Stations.
+
+The server address sticks use is the floor address in two-network mode, otherwise this server's address. It can be changed before making a stick, for example to a DNS name.
+
+If a desktop on the server has the stick open (a file manager window), the stick is refused and nothing is erased: close the window and try again. A stick that fails part-way has its key revoked automatically; just make it again.
+
 Stations (with their `bws_` key, on the floor side) can fetch the current floor Wi-Fi as a ready-made Windows Wi-Fi profile from `GET /api/v1/station/wifi`. That's how sticks keep their `wifi.xml` up to date.
 
 Searches also take `from` / `to` (completion date) and `serials` (a comma-separated list).

@@ -75,3 +75,4 @@ pre.json { background: var(--panel-2); padding: 12px; border-radius: var(--radiu
 .choice.active { border-color: var(--accent); }
 .choice p { margin: 2px 0 0; }
 .errors { border-color: var(--fail); } .errors strong { color: var(--fail); } .errors ul { margin: 6px 0 0; padding-left: 20px; }
+.spaced { margin-top: 10px; }

@@ -1,6 +1,8 @@
 [Unit]
-Description=Benchwise Server: apply network/certificate changes from the setup wizard (root helper)
+Description=Benchwise Server: root helper (setup changes, USB stick making)
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/node /opt/benchwise-server/src/apply.js
+# Making a stick (format + copy ~0.4 GB) can take a few minutes.
+TimeoutStartSec=30min

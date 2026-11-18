@@ -1,7 +1,7 @@
 {
   "name": "benchwise",
   "productName": "Benchwise",
-  "version": "2.5.0-beta.1",
+  "version": "2.5.0-beta.2",
   "description": "Lightweight ITAD hardware information and test tool for auditors and testers.",
   "main": "src/main/main.js",
   "license": "GPL-3.0-only",

@@ -210,7 +210,7 @@ function secretBox(title, key) {
 
 async function adminPage(view) {
   const out = el('div', {});
-  const [sites, stations, clients, users, log, wifiInfo] = await Promise.all(['/sites', '/stations', '/api-clients', '/users', '/admin-log', '/settings/wifi'].map((p) => api(p)));
+  const [sites, stations, clients, users, log, wifiInfo, stickInfo] = await Promise.all(['/sites', '/stations', '/api-clients', '/users', '/admin-log', '/settings/wifi', '/sticks'].map((p) => api(p)));
   const siteOptions = () => sites.map((s) => el('option', { value: s.code }, `${s.code} · ${s.name}`));
   const refresh = () => adminPage(view);
   const act = (fn) => async (e) => {
@@ -227,6 +227,7 @@ async function adminPage(view) {
     view,
     el('h1', {}, 'Administration'),
     out,
+    sticksCard(stickInfo, refresh),
     el(
       'div',
       { class: 'cards' },
@@ -458,6 +459,78 @@ function setupPage(view) {
     );
   }
   render();
+}
+
+/** USB sticks made at this server: the Benchwise build, the drives plugged in, progress. */
+function sticksCard(info, refresh) {
+  const progress = el('div', {});
+  const address = el('input', { value: info.defaults.serverAddress || '', size: 18, title: 'The address benches and sticks use to reach this server (the floor side)' });
+  const pre = el('input', { type: 'checkbox' });
+  const upload = el('input', { type: 'file', accept: '.zip', class: 'hidden', onchange: async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    fill(progress, el('p', {}, `Uploading ${f.name}…`));
+    try {
+      const res = await fetch(`/api/v1/sticks/app?name=${encodeURIComponent(f.name)}`, { method: 'PUT', body: f, credentials: 'same-origin', headers: { 'content-type': 'application/zip', 'x-benchwise': '1' } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast(`Benchwise ${data.app.version} ready for sticks`);
+      refresh();
+    } catch (x) {
+      fill(progress, el('p', { class: 'badge fail' }, x.message));
+    }
+  } });
+  const fetchLatest = async () => {
+    fill(progress, el('p', {}, 'Downloading the latest Benchwise release from GitHub…'));
+    try {
+      const r = await api('/sticks/app/fetch', { method: 'POST', body: { includePrerelease: pre.checked } });
+      toast(`Benchwise ${r.app.version} ready for sticks${r.app.verified ? ' (checksum verified)' : ''}`);
+      refresh();
+    } catch (x) {
+      fill(progress, el('p', { class: 'badge fail' }, x.message));
+    }
+  };
+  const make = async (d) => {
+    if (!confirm(`Erase EVERYTHING on ${d.model} (${d.size}${d.label ? `, "${d.label}"` : ''}) and make it a Benchwise stick?`)) return;
+    let job;
+    try {
+      job = await api('/sticks', { method: 'POST', body: { device: d.name, serial: d.serial, serverAddress: address.value.trim() } });
+    } catch (x) {
+      return fill(progress, el('p', { class: 'badge fail' }, x.message));
+    }
+    const line = el('p', {}, `${job.station}: queued…`);
+    fill(progress, el('div', { class: 'card' }, el('strong', {}, `Making ${job.station} on ${d.model}`), line));
+    const poll = async () => {
+      const st = await api(`/sticks/jobs/${job.jobId}`).catch(() => ({ state: 'working' }));
+      if (st.state === 'done') {
+        fill(line, el('span', { class: 'badge pass' }, 'Done'), ` ${job.station} is ready. You can remove the stick.`);
+        return refresh();
+      }
+      if (st.state === 'failed') return fill(line, el('span', { class: 'badge fail' }, 'Failed'), ` ${st.message} (the stick's key was revoked).`);
+      line.textContent = `${job.station}: ${st.step || st.state}…`;
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 1500);
+  };
+  const a = info.app;
+  return el(
+    'section',
+    { class: 'card' },
+    el('h2', {}, 'USB sticks'),
+    el('p', { class: 'muted small' }, 'Plug a USB drive into this server and make it a Benchwise stick: Benchwise, the floor Wi-Fi and this server\'s address, with its own station key.'),
+    !info.wifi ? el('p', { class: 'badge incomplete' }, 'No floor Wi-Fi set: sticks will need a wired connection.') : null,
+    el('p', {}, el('strong', {}, 'Benchwise for sticks: '), a ? `${a.version} (${a.source === 'github' ? `GitHub${a.verified ? ', checksum verified' : ''}` : 'uploaded'}, ${new Date(a.at).toLocaleDateString()})` : el('span', { class: 'muted' }, 'none yet')),
+    el('div', { class: 'row' }, el('button', { class: 'btn', onclick: fetchLatest }, 'Get latest release'), el('label', { class: 'small' }, pre, ' include pre-releases'), el('button', { class: 'btn', onclick: () => upload.click() }, 'Upload ZIP…'), upload),
+    el('div', { class: 'row spaced' }, el('span', { class: 'small' }, 'Address sticks use:'), address),
+    el('table', { class: 'grid' }, el('tbody', {},
+      info.drives.length
+        ? info.drives.map((d) => el('tr', {},
+            el('td', {}, el('strong', {}, d.model), el('div', { class: 'muted small' }, [`/dev/${d.name}`, d.size, d.serial && `S/N ${d.serial}`, d.label && `"${d.label}"`].filter(Boolean).join(' · '))),
+            el('td', {}, d.eligible ? el('button', { class: 'btn primary small', disabled: !a, onclick: () => make(d) }, 'Make stick') : el('span', { class: 'muted small' }, d.why))))
+        : el('tr', {}, el('td', { class: 'muted' }, 'No USB drive plugged into this server.')))),
+    el('div', { class: 'row' }, el('button', { class: 'btn small', onclick: refresh }, 'Refresh drives')),
+    progress,
+  );
 }
 
 /** Floor Wi-Fi that USB sticks join (shown without its password). */
