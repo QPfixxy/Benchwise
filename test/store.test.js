@@ -118,3 +118,13 @@ test('no asset tag: the record is keyed and named on the serial; intake profile 
   assert.match(saved.file, /^ABC-123-X_\d{8}-\d{6}$/, 'serial made safe for a file name');
   assert.throws(() => buildAudit({ input: { assetTag: '' }, hardware, settings: { ...settings, assetTagRequired: true }, app }), /required/);
 });
+
+test('no serial in firmware: the file name falls back to NO-SERIAL plus the UUID', async () => {
+  const { store } = tmpStore();
+  const hw = (system) => ({ ...hardware, system: { ...hardware.system, ...system } });
+  const withUuid = buildAudit({ input: {}, hardware: hw({ serial: null, uuid: '4c4c4544-0042-3510-8048-b4c04f4e3432' }), settings, app });
+  assert.equal(withUuid.uuid, '4c4c4544-0042-3510-8048-b4c04f4e3432');
+  assert.match((await store.save(withUuid)).file, /^NO-SERIAL-4c4c4544_\d{8}-\d{6}$/);
+  const none = buildAudit({ input: {}, hardware: hw({ serial: null, uuid: null }), settings, app });
+  assert.match((await store.save(none)).file, /^NO-SERIAL_\d{8}-\d{6}/);
+});

@@ -15,6 +15,7 @@ const { isElevated, ensureLinuxElevation } = require('./elevation');
 
 const { collectHardware } = require('./hardware/collect');
 const { checkDrives } = require('./drives/smartctl');
+const { detectEnvironment } = require('./intake/environment');
 const { runMdmCheck, loadKnownTenants, mdmVerdict } = require('./intake/mdm');
 const { runDefenderScan, malwareVerdict } = require('./intake/defender');
 const { PortWatcher, listVolumes, prepareDrive, ejectVolume } = require('./ports/testdrive');
@@ -204,6 +205,10 @@ function registerIpc() {
     execFile('shutdown', ['/s', '/t', '0'], { windowsHide: true }, () => {});
   });
   handle('hardware:collect', (force) => getHardware(Boolean(force)));
+  // A fraction of a second (a few registry reads), so intake can start
+  // before the full hardware scan has finished.
+  let envPromise = null;
+  handle('env:detect', () => (envPromise ??= detectEnvironment()));
   handle('drives:check', () => getDriveHealth());
   // Defender scan (definition update + quick scan: minutes). One at a time.
   handle('malware:run', () => {

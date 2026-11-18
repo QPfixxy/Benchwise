@@ -21,6 +21,7 @@ export const state = {
   route: 'overview',
   stress: { running: null, last: {} },
   busy: {}, // test id -> true while a background check runs (sidebar spinner)
+  environment: null, // where we're running; known before the hardware scan ends
 };
 
 const listeners = new Set();
@@ -47,7 +48,7 @@ function newSession() {
     tests: Object.fromEntries(stationTests().map((t) => [t.id, { status: 'untested', notes: '', details: {} }])),
     // 'intake' (Windows setup: lock + malware checks) or 'full'. Chosen once
     // the hardware scan says where we're running; null until then.
-    profile: state.hardware ? defaultProfile() : null,
+    profile: state.environment || state.hardware ? defaultProfile() : null,
   };
 }
 
@@ -55,7 +56,7 @@ function newSession() {
 const PROFILE_TESTS = { full: null, intake: ['mdm', 'malware'] };
 export const PROFILE_LABELS = { intake: 'Intake checks', full: 'Full audit' };
 
-export const inSetup = () => state.hardware?.environment?.mode === 'oobe';
+export const inSetup = () => (state.environment?.mode ?? state.hardware?.environment?.mode) === 'oobe';
 const defaultProfile = () => (inSetup() ? 'intake' : 'full');
 
 /** Switches between the intake checks and the full audit (results are kept). */
@@ -429,6 +430,16 @@ async function boot() {
   emit();
   navigate('overview');
   document.getElementById('assetTagInput')?.focus();
+  // Intake doesn't need the hardware scan: start it as soon as we know we're
+  // in Windows setup (the scan can take 30 s on some units). If this check
+  // fails, the scan's own environment result starts it instead.
+  api
+    .detectEnvironment()
+    .then((env) => {
+      state.environment = env;
+      if (state.session && !state.session.profile) beginSession();
+    })
+    .catch(() => {});
   scanHardware();
   refreshMedia();
   navigator.mediaDevices.addEventListener('devicechange', refreshMedia);

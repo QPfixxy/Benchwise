@@ -24,9 +24,14 @@ const PROFILES = {
   intake: { tests: ['mdm', 'malware'] },
 };
 
-/** File name key: the asset tag, else the manufacturer serial. */
+/**
+ * File name key: the asset tag, else the manufacturer serial, else (no serial
+ * in firmware, e.g. after a board swap) NO-SERIAL plus the start of the
+ * system UUID, which is still unique per board.
+ */
 function fileKey(audit) {
-  const key = audit.assetTag || audit.serial || 'NO-SERIAL';
+  const uuidPart = String(audit.uuid || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8);
+  const key = audit.assetTag || audit.serial || (uuidPart ? `NO-SERIAL-${uuidPart}` : 'NO-SERIAL');
   return String(key).replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'NO-SERIAL';
 }
 
@@ -70,6 +75,7 @@ function buildAudit({ input, hardware, settings, app }) {
     assetTag: tag.value,
     assetTagLabel: settings.assetTagLabel,
     serial: hardware?.system?.serial || null,
+    uuid: hardware?.system?.uuid || null,
     profile,
     technician: str(input.technician, 80),
     station: settings.stationName,

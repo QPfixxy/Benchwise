@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('benchwise', {
   quit: call('app:quit'),
   shutdown: call('system:shutdown'),
   collectHardware: call('hardware:collect'),
+  detectEnvironment: call('env:detect'),
   checkDrives: call('drives:check'),
   malware: {
     run: call('malware:run'),
