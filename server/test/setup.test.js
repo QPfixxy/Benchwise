@@ -138,7 +138,9 @@ test('apply helper: an uploaded certificate is installed (key owner-only)', { sk
   const c = makeCert(fs.mkdtempSync(path.join(os.tmpdir(), 'bw-cert-')), 'company');
   applyRequest({ network: { mode: 'one' }, certificate: { mode: 'upload', ...c } }, { paths, interfaces: IFACES, run: () => {} });
   assert.equal(fs.readFileSync(path.join(paths.etc, 'tls', 'server.crt'), 'utf8'), c.certPem);
-  assert.equal(fs.statSync(path.join(paths.etc, 'tls', 'server.key')).mode & 0o777, 0o600);
+  // Windows has no POSIX modes (always 0o666): there, the key is protected by
+  // folder permissions (ACLs), set up by the Windows installer (Phase A step 4).
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(paths.etc, 'tls', 'server.key')).mode & 0o777, 0o600);
 });
 
 test('apply helper: request files are read without following links', { skip: process.platform === 'win32' && 'POSIX only' }, () => {
