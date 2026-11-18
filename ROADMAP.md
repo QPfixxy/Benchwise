@@ -66,10 +66,60 @@ Phase 4 is the groundwork for the Benchwise Hub (3.0) below: the outbox and the 
 ## Phase 5: Distribution and quality
 
 - **Code signing:** Windows (avoids SmartScreen warnings) and macOS notarization (needed for camera/mic permission prompts on distributed builds).
-- **Linux live USB:** a minimal Debian/Ubuntu live image that autostarts the Benchwise AppImage as root. This covers machines with no OS or a wiped drive, which are common in ITAD, and gives full DMI/SMART access.
+- **Bootable Benchwise:** see [Bootable Benchwise](#bootable-benchwise-near-term) below.
 - **Hardware fixtures:** add `--dump-raw` to save unprocessed `systeminformation` output from real machines into `test/fixtures/`. Every odd machine you meet becomes a regression test for `normalize.js`.
 - **Linting/types:** ESLint plus `tsc --checkJs` with JSDoc types on the main process.
 - **Updates:** optional `electron-updater`, off by default for offline benches.
+
+## Intake checks: MDM / Autopilot lock and malware (Windows), in progress
+
+Brings in the OOBE intake gate from the separate `benchwise-intake` project. Work happens on the `feature/intake-checks` branch and is merged to `main` only once it has been proven on real units. Its PowerShell checks (v1) are proven in production during Windows setup (OOBE, opened with Shift+F10), and v1 stays in production until this is ready. Benchwise is confirmed to launch in OOBE as Administrator, read the hardware and record audio (tested in a VM).
+
+**Build order:**
+1. Environment detection and the MDM / Autopilot test.
+2. The Defender malware scan.
+3. The Intake profile, and `boot.cmd` launching Benchwise in OOBE.
+
+**MDM / Autopilot test.** It ports v1's detection logic exactly and is offered only when Benchwise is running in OOBE. Anywhere else it reads "run during Windows setup".
+- **Network gate:** before checking, it must reach `8.8.8.8` plus Microsoft's Autopilot, sign-in and device-registration services, with 4 tries. If it can't, the result is "Can't verify: fix the network and retry", with no verdict, because a locked unit could otherwise look clean.
+- **Detection:** it polls the Autopilot `TenantId` registry values for about 30 seconds. `CloudAssignedTenantId` and `CloudAssignedTenantDomain` are recorded as extra evidence but don't affect the verdict.
+- **Results:**
+  - **Clean** (Pass): no tenant.
+  - **Locked** (Fail by default): the tenant is in the known-tenants list, or is a domain. It shows "Locked to <tenant>: send to salvage". Whether Locked fails the audit will become a site setting, because other organisations treat it differently.
+  - **Ghost Profile** (no automatic verdict): only an unknown tenant ID. The tech checks by hand by running the setup process with Wi-Fi to see whether it forces a corporate sign-in, because a ghost profile isn't always a lock.
+- **Known tenants:** read from a `KnownTenants.txt` (`GUID=Name`) on the share or stick until the Hub serves it. Tenant names are client data and never go into this repository.
+
+**Malware scan test.** It ports v1's Defender audit and runs in the background, like the stress tests.
+- It **always updates definitions first**, then sets Defender to audit mode (PUA audit, and "no action" for every threat level) and runs a **quick scan**.
+- **Report only:** nothing is removed, and the settings stay in audit mode afterwards, as in v1. Units are wiped by separate software before Windows is reinstalled.
+- Any detection in Defender's history counts as infected, as in v1. The report separates new and older detections, and records the file count, duration, engine and definition versions, and whether Tamper Protection blocked audit mode.
+- An infected unit is **recorded, not failed**, by default. This will also become a site setting.
+
+**Also in scope:**
+- **Security inventory (Windows):** TPM, Secure Boot, BitLocker status and the Defender version.
+- **Environment detection:** the scan records where Benchwise is running (OOBE, audit mode, full Windows, live USB) and which Windows installs and drives it found.
+- **Intake profile:** identity, MDM and malware only. Benchwise opens straight into it in OOBE, and the full audit can still be run in the same session. When done, the tech can shut down or exit back to OOBE.
+- **Asset tag becomes optional** (possibly removed). Records are keyed on the manufacturer serial, ready for integration with Tableau and other reporting tools.
+- **Results:** saved to the stick and copied to the intake server's share until the Hub exists. The intake server learns to read Benchwise records, so there is one format.
+- **USB sticks carry the unpacked app folder**, for fast starts.
+
+**Standalone or networked:** Benchwise must work on its own, and as part of a facility. When networked, it reads its settings from the server before testing (verdict rules, known tenants, enabled tests). **Real production deployment waits for the central server (Hub).**
+
+## Bootable Benchwise (near term)
+
+Boot any unit from a USB stick, with or without a working OS or a drive.
+
+- A minimal Linux live image that autostarts the Benchwise AppImage as root: full DMI and SMART access, hardware and functional tests, and drive health.
+- It detects whether a drive is present, whether Windows is installed on it, and whether it's BitLocker-encrypted.
+- Reports are saved to the stick (portable mode) or synced to the Hub.
+- No MDM check here: that needs Windows setup to contact Microsoft. See below.
+
+## Future: MDM check for units without a drive or Windows
+
+A locked unit stays locked with its drive removed, because Autopilot registration follows the hardware. Two candidate approaches, in order of preference:
+
+1. **Portable OOBE:** a USB SSD holding a generalized Windows that always boots into setup (OOBE). The unit then downloads its own Autopilot profile through Windows' normal, supported process, and the existing MDM test runs unchanged. To test first: does Autopilot still recognize the unit when Windows runs from an external disk? One known-locked unit with its drive pulled answers it.
+2. **Hardware hash lookup (research only):** compute the Windows hardware hash and query Microsoft directly, as commercial tools such as BitRaser and D-Secure appear to do. The service involved isn't documented for third-party use, so this is fragile and a poor fit for an open-source project.
 
 ## 3.0 and later: Benchwise Hub (site server)
 
@@ -90,7 +140,7 @@ A self-hosted server for a site, quick to deploy, that every bench and Benchwise
 - Every audit (JSON + PDF) syncs to the Hub through the station outbox. Benches keep working offline and catch up when reconnected.
 - Records are append-only and hash-chained, so edits and deletions are visible. Re-tests are linked to the original audit, not overwritten.
 - Completeness checks: units seen but never fully tested, incomplete audits, failed units awaiting retest, and gaps against an imported intake list or lot manifest.
-- Search and dashboard: asset tag, serial, lot, model, technician, fail rates, throughput. CSV/JSON export, and an API for an ERP or inventory system.
+- Search and dashboard: serial, asset tag, lot, model, technician, MDM and malware results, fail rates, throughput. Integration with reporting tools such as Tableau. CSV/JSON export, and an API for an ERP or inventory system.
 - Optional SMB/network-share view of reports for teams and tools that expect a plain folder.
 
 **Log and diagnostics sync**
@@ -100,6 +150,12 @@ A self-hosted server for a site, quick to deploy, that every bench and Benchwise
 - The Hub hosts approved Benchwise releases. Stations update from it, never straight from the internet, so a site can pin, stage or roll back a version.
 - Plugging a Benchwise USB stick (portable app or live-USB image) into any enrolled station or the Hub checks it and brings it up to the approved version: app, test profiles and settings. The stick's version is recorded in every audit it produces.
 - Pushes test profiles, asset tag rules and enabled tests to every bench, so the whole site runs the same procedure.
+
+**Site policy and intake data**
+- Verdict rules per site: whether an MDM/Autopilot lock fails the audit, and whether malware fails it or is only recorded.
+- The known-tenants list (tenant ID to client name), served to stations and never stored in the app or the repository.
+- Benchwise fetches these settings before testing when it's networked, and uses its local defaults when standalone.
+- Imports the old intake history from a CSV upload when wanted, using the importer logic from `benchwise-intake`.
 
 **Later**
 - Multi-site: several Hubs reporting to one organization view.
