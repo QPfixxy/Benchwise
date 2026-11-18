@@ -113,6 +113,43 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
     assert.equal((await app.inject({ url: '/api/v1/audits', headers: as(station.key) })).statusCode, 401, 'station keys cannot read');
   });
 
+  await t.test('compliance exports: a PDF per record on demand, and ZIP batches (never stored)', async () => {
+    const client = newKey('client');
+    await pool.query("INSERT INTO api_clients (name, key_prefix, key_hash) VALUES ('compliance', $1, $2)", [client.prefix, client.hash]);
+    const dalOnly = newKey('client');
+    await pool.query("INSERT INTO api_clients (name, key_prefix, key_hash, site_ids) VALUES ('dal-export', $1, $2, $3)", [dalOnly.prefix, dalOnly.hash, [dal]]);
+    const lot = ['LOT-A1', 'LOT-A2', 'LOT-A3'];
+    const ids = [];
+    for (const serial of lot) {
+      const r = record({ serial });
+      ids.push(r.id);
+      assert.equal((await upload({ record: r })).statusCode, 201);
+    }
+    const one = await app.inject({ url: `/api/v1/audits/${ids[0]}/report.pdf`, headers: as(client.key) });
+    assert.equal(one.statusCode, 200);
+    assert.equal(one.headers['content-type'], 'application/pdf');
+    assert.equal(one.rawPayload.subarray(0, 5).toString(), '%PDF-');
+    assert.match(one.headers['content-disposition'], /LOT-A1_\d{8}-\d{6}\.pdf/);
+
+    assert.equal((await app.inject({ url: '/api/v1/export.zip', headers: as(client.key) })).statusCode, 400, 'an export needs a filter');
+    const zip = await app.inject({ url: `/api/v1/export.zip?serials=${lot.join(',')},NOT-THERE`, headers: as(client.key) });
+    assert.equal(zip.statusCode, 200);
+    assert.equal(zip.headers['content-type'], 'application/zip');
+    const body = zip.rawPayload;
+    assert.equal(body.subarray(0, 2).toString(), 'PK');
+    const names = body.toString('latin1');
+    assert.ok(names.includes('summary.csv'));
+    for (const serial of lot) assert.ok(names.includes(`pdfs/${serial}_`), serial);
+    assert.equal((names.match(/%PDF-/g) || []).length, 3, 'three PDFs inside');
+
+    // A DAL-only key can't export another site's records.
+    const phxSerial = (await app.inject({ url: '/api/v1/audits?site=PHX', headers: as(client.key) })).json().items[0]?.serial;
+    if (phxSerial) assert.equal((await app.inject({ url: `/api/v1/export.zip?serials=${phxSerial}`, headers: as(dalOnly.key) })).statusCode, 404);
+    const logged = await pool.query("SELECT actor, detail FROM admin_log WHERE action = 'export.zip' ORDER BY id DESC LIMIT 1");
+    assert.equal(logged.rows[0].actor, 'compliance');
+    assert.equal(logged.rows[0].detail.records, 3);
+  });
+
   await t.test('CSV export is safe from spreadsheet formula injection', async () => {
     await upload({ record: record({ serial: '=HYPERLINK("http://evil")', technician: '@SUM(1)' }) });
     const client = newKey('client');

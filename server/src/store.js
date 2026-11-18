@@ -75,7 +75,7 @@ function summary(row) {
  * order after it, so a WMS can keep pulling "everything new".
  * `siteIds` (null = all) is the caller's access, always applied.
  */
-async function searchAudits(pool, { siteIds = null, serial, site, overall, profile, q, since, limit = 50, newestFirst = !since }) {
+async function searchAudits(pool, { siteIds = null, serial, serials, site, overall, profile, q, since, from, to, limit = 50, newestFirst = !since }) {
   const where = [];
   const args = [];
   const add = (sql, v) => {
@@ -88,6 +88,9 @@ async function searchAudits(pool, { siteIds = null, serial, site, overall, profi
   if (overall) add('a.overall = ?', overall);
   if (profile) add('a.profile = ?', profile);
   if (since) add('a.seq > ?', since);
+  if (from) add('a.completed_at >= ?', from);
+  if (to) add('a.completed_at < ?', to);
+  if (serials?.length) add('upper(a.serial) = ANY(?)', serials.map((x) => x.toUpperCase()));
   if (q) {
     args.push(`%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
     const p = `$${args.length}`;
@@ -151,4 +154,22 @@ async function verifyChain(pool, siteId, { batch = 5000 } = {}) {
 
 const log = (db, actor, action, detail = {}) => db.query('INSERT INTO admin_log (actor, action, detail) VALUES ($1, $2, $3)', [actor, action, detail]);
 
-module.exports = { insertAudit, searchAudits, getAudit, verifyChain, log };
+/** Full records for a list of audit ids (export), within the caller's sites. */
+async function getAudits(pool, ids, { siteIds = null } = {}) {
+  if (!ids.length) return [];
+  const args = [ids];
+  let cond = 'a.id = ANY($1)';
+  if (siteIds) {
+    args.push(siteIds);
+    cond += ' AND a.site_id = ANY($2)';
+  }
+  const r = await pool.query(
+    `SELECT ${SUMMARY_COLUMNS}, r.record, a.hash, a.prev_hash FROM audits a
+     JOIN audit_records r ON r.record_year = a.record_year AND r.audit_id = a.id
+     JOIN sites s ON s.id = a.site_id JOIN stations st ON st.id = a.station_id WHERE ${cond} ORDER BY a.seq`,
+    args,
+  );
+  return r.rows.map((row) => ({ ...summary(row), record: row.record, hash: row.hash, prevHash: row.prev_hash }));
+}
+
+module.exports = { insertAudit, searchAudits, getAudit, getAudits, verifyChain, log };

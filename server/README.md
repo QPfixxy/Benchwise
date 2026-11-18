@@ -56,6 +56,12 @@ Create an integration key under **Administration → Integrations**, optionally 
 | `GET /api/v1/units/<serial>` | A unit's latest result and its history |
 | `GET /api/v1/audits/<id>` and `/pdf` | The full record, and its PDF |
 | `GET /api/v1/audits.csv?…` | A search as CSV |
+| `GET /api/v1/audits/<id>/report.pdf` | A compliance PDF of one record, drawn on demand |
+| `GET /api/v1/export.zip?site=…&from=YYYY-MM-DD&to=…` or `?serials=A,B,C` | A compliance export: one PDF per record plus `summary.csv` (up to 5,000 records; logged) |
+
+Searches also take `from` / `to` (completion date) and `serials` (a comma-separated list).
+
+**PDFs are never stored on the server.** They are drawn from the stored record each time, with its SHA-256 and chain hash printed, so a PDF can always be checked against the server.
 
 ## Files on the server
 

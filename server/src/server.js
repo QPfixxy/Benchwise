@@ -11,6 +11,27 @@ const auth = require('./auth');
 const { newKey } = require('./keys');
 const { hashPassword, checkStrength } = require('./passwords');
 const { version } = require('../package.json');
+const yazl = require('yazl');
+const { renderRecordPdf, pdfName } = require('./report');
+
+const MAX_EXPORT = 5000; // records per ZIP export
+const CSV_COLUMNS = ['completedAt', 'site', 'station', 'serial', 'assetTag', 'manufacturer', 'model', 'profile', 'overall', 'mdm', 'malware', 'technician', 'appVersion', 'id'];
+
+/** CSV, safe from spreadsheet formula injection (a cell starting with = + - @ gets a leading '). */
+function toCsv(items) {
+  const cell = (v) => {
+    let s = v == null ? '' : v instanceof Date ? v.toISOString() : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [CSV_COLUMNS.join(','), ...items.map((it) => CSV_COLUMNS.map((c) => cell(it[c])).join(','))].join('\r\n');
+}
+
+/** Query filters -> search options (serials: comma/space/newline separated). */
+function filters(q) {
+  const serials = q.serials ? [...new Set(q.serials.split(/[\s,;]+/).filter(Boolean))].slice(0, 2000) : null;
+  return { ...q, serials, from: q.from || null, to: q.to || null };
+}
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 const STATIC = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
@@ -169,6 +190,9 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
         profile: { type: 'string', enum: ['intake', 'full'] },
         q: { type: 'string', maxLength: 64 },
         since: { type: 'string', pattern: '^[0-9]{1,18}$' },
+        from: { type: 'string', format: 'date' },
+        to: { type: 'string', format: 'date' },
+        serials: { type: 'string', maxLength: 64000 },
         limit: { type: 'integer', minimum: 1, maximum: 500 },
       },
     },
@@ -176,21 +200,52 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
 
   app.get('/api/v1/audits', { schema: searchSchema }, async (req) => {
     const p = await reader(req);
-    return store.searchAudits(pool, { ...req.query, siteIds: p.siteIds });
+    return store.searchAudits(pool, { ...filters(req.query), siteIds: p.siteIds });
   });
 
   app.get('/api/v1/audits.csv', { schema: searchSchema }, async (req, reply) => {
     const p = await reader(req);
-    const { items } = await store.searchAudits(pool, { ...req.query, limit: 500, siteIds: p.siteIds });
-    const cols = ['completedAt', 'site', 'station', 'serial', 'assetTag', 'manufacturer', 'model', 'profile', 'overall', 'mdm', 'malware', 'technician', 'appVersion', 'id'];
-    // Spreadsheet formula injection: a cell starting with = + - @ is prefixed with '.
-    const cell = (v) => {
-      let s = v == null ? '' : v instanceof Date ? v.toISOString() : String(v);
-      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const csv = [cols.join(','), ...items.map((it) => cols.map((c) => cell(it[c])).join(','))].join('\r\n');
-    return reply.type('text/csv; charset=utf-8').header('Content-Disposition', 'attachment; filename="benchwise-audits.csv"').send(csv);
+    const { items } = await store.searchAudits(pool, { ...filters(req.query), limit: 500, siteIds: p.siteIds });
+    return reply.type('text/csv; charset=utf-8').header('Content-Disposition', 'attachment; filename="benchwise-audits.csv"').send(toCsv(items));
+  });
+
+  // Compliance export: a ZIP of one PDF per record plus a CSV summary, drawn
+  // from the stored records on request (never stored). Logged.
+  app.get('/api/v1/export.zip', { schema: searchSchema }, async (req, reply) => {
+    const p = await reader(req);
+    const f = filters(req.query);
+    if (!f.from && !f.to && !f.serials && !f.serial && !f.site) fail(400, 'Choose a date range, a site or serial numbers to export.');
+    const items = [];
+    let since = '0';
+    for (;;) {
+      const page = await store.searchAudits(pool, { ...f, siteIds: p.siteIds, since, limit: 500, newestFirst: false });
+      items.push(...page.items);
+      if (items.length > MAX_EXPORT) fail(413, `More than ${MAX_EXPORT} records match: narrow the export (for example a shorter date range).`);
+      if (page.items.length < 500) break;
+      since = page.nextCursor;
+    }
+    if (!items.length) fail(404, 'No records match.');
+    await store.log(pool, p.name, 'export.zip', { records: items.length, filters: { site: f.site, from: f.from, to: f.to, serial: f.serial, serials: f.serials?.length, overall: f.overall, profile: f.profile } });
+
+    const zip = new yazl.ZipFile();
+    zip.addBuffer(Buffer.from(toCsv(items), 'utf8'), 'summary.csv');
+    const used = new Set();
+    (async () => {
+      for (let i = 0; i < items.length; i += 100) {
+        for (const a of await store.getAudits(pool, items.slice(i, i + 100).map((x) => x.id), { siteIds: p.siteIds })) {
+          let name = `pdfs/${pdfName(a)}`;
+          if (used.has(name)) name = name.replace(/\.pdf$/, `_${a.id.slice(0, 8)}.pdf`);
+          used.add(name);
+          zip.addBuffer(await renderRecordPdf(a), name, { compress: false }); // PDFs are already compressed
+        }
+      }
+      zip.end();
+    })().catch((err) => {
+      req.log.error(err);
+      zip.outputStream.destroy(err);
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    return reply.type('application/zip').header('Content-Disposition', `attachment; filename="benchwise-export-${stamp}.zip"`).send(zip.outputStream);
   });
 
   const idParam = { params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] } };
@@ -198,6 +253,12 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true } 
   app.get('/api/v1/audits/:id', { schema: idParam }, async (req) => {
     const p = await reader(req);
     return (await store.getAudit(pool, req.params.id, { siteIds: p.siteIds })) || fail(404, 'No such audit.');
+  });
+
+  app.get('/api/v1/audits/:id/report.pdf', { schema: idParam }, async (req, reply) => {
+    const p = await reader(req);
+    const a = (await store.getAudit(pool, req.params.id, { siteIds: p.siteIds })) || fail(404, 'No such audit.');
+    return reply.type('application/pdf').header('Content-Disposition', `inline; filename="${pdfName(a)}"`).send(await renderRecordPdf(a));
   });
 
   app.get('/api/v1/units/:serial', { schema: { params: { type: 'object', properties: { serial: { type: 'string', maxLength: 64 } } } } }, async (req) => {

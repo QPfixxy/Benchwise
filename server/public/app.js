@@ -90,17 +90,49 @@ async function searchPage(view, params) {
   const site = el('select', {}, el('option', { value: '' }, 'All sites'), (me.sites || []).map((s) => el('option', { value: s.code, selected: params.get('site') === s.code }, `${s.code} · ${s.name}`)));
   const overall = el('select', {}, ['', 'pass', 'fail', 'incomplete'].map((v) => el('option', { value: v, selected: params.get('overall') === v }, v || 'Any result')));
   const profile = el('select', {}, [['', 'Intake and full'], ['intake', 'Intake'], ['full', 'Full audit']].map(([v, t]) => el('option', { value: v, selected: params.get('profile') === v }, t)));
-  const qs = () => new URLSearchParams(Object.entries({ q: q.value.trim(), site: site.value, overall: overall.value, profile: profile.value }).filter(([, v]) => v)).toString();
+  const from = el('input', { type: 'date', value: params.get('from') || '', title: 'Completed from (inclusive)' });
+  const to = el('input', { type: 'date', value: params.get('to') || '', title: 'Completed before (exclusive)' });
+  const qs = () => new URLSearchParams(Object.entries({ q: q.value.trim(), site: site.value, overall: overall.value, profile: profile.value, from: from.value, to: to.value }).filter(([, v]) => v)).toString();
   const go = (e) => {
     e?.preventDefault();
     location.hash = `#/?${qs()}`;
   };
   const csv = el('a', { class: 'btn', href: `/api/v1/audits.csv?${qs()}` }, 'Export CSV');
+  // Compliance export: a PDF per record (drawn on demand) plus a CSV summary.
+  const exportFilters = () => new URLSearchParams(Object.entries({ site: site.value, overall: overall.value, profile: profile.value, from: from.value, to: to.value }).filter(([, v]) => v));
+  const zip = el(
+    'button',
+    {
+      class: 'btn',
+      type: 'button',
+      title: 'One PDF per record plus a CSV summary, for the current site, result and dates',
+      onclick: () => {
+        const f = exportFilters();
+        if (!f.get('site') && !f.get('from') && !f.get('to')) return toast('Choose a site or a date range to export.', 'error');
+        location.href = `/api/v1/export.zip?${f}`;
+      },
+    },
+    'Export PDFs (ZIP)',
+  );
+  const serialList = el('textarea', { rows: 4, cols: 60, placeholder: 'One serial number per line (or separated by commas)' });
+  const bySerial = el(
+    'details',
+    { class: 'card' },
+    el('summary', {}, 'Export by serial list (e.g. a client lot)'),
+    el('p', { class: 'muted small' }, 'Paste serial numbers; you get one PDF per matching record plus a CSV summary.'),
+    serialList,
+    el('div', { class: 'row' }, el('button', { class: 'btn primary', type: 'button', onclick: () => {
+      const list = serialList.value.split(/[\s,;]+/).filter(Boolean);
+      if (!list.length) return toast('Paste at least one serial number.', 'error');
+      location.href = `/api/v1/export.zip?${new URLSearchParams({ serials: list.join(',') })}`;
+    } }, 'Export PDFs (ZIP)')),
+  );
   const results = el('div', {}, el('p', { class: 'muted' }, 'Loading…'));
   fill(
     view,
     el('h1', {}, 'Audits'),
-    el('form', { class: 'row filters', onsubmit: go }, q, site, overall, profile, el('button', { class: 'btn primary', type: 'submit' }, 'Search'), csv),
+    el('form', { class: 'row filters', onsubmit: go }, q, site, overall, profile, from, el('span', { class: 'muted' }, 'to'), to, el('button', { class: 'btn primary', type: 'submit' }, 'Search'), csv, zip),
+    bySerial,
     results,
   );
   try {
@@ -151,7 +183,7 @@ async function auditPage(view, id) {
   const raw = el('pre', { class: 'json hidden' }, JSON.stringify(r, null, 2));
   fill(
     view,
-    el('div', { class: 'row' }, el('a', { class: 'btn', href: '#/' }, '← Audits')),
+    el('div', { class: 'row' }, el('a', { class: 'btn', href: '#/' }, '← Audits'), el('a', { class: 'btn primary', href: `/api/v1/audits/${a.id}/report.pdf`, target: '_blank', rel: 'noopener' }, 'Download PDF')),
     el('h1', {}, `${a.serial || a.assetTag || 'No serial'} `, badge(a.overall)),
     el('p', { class: 'muted' }, `${[a.manufacturer, a.model].filter(Boolean).join(' ')} · ${a.site} · ${a.station} · ${when(a.completedAt)}`),
     el(

@@ -162,6 +162,5 @@ Upgrades: run the new installer, or approve a version at the Hub and the site se
   - The Ubuntu installer (fresh install, upgrade and network switching tested).
   - Benchwise's outbox: records only (no PDFs), with fingerprint pinning.
   - Direct HTTPS for Windows.
-- **Next:**
-  - on-demand compliance PDFs;
-  - then Phase A step 2, the browser setup wizard.
+  - **Compliance PDFs on demand:** one record, or a ZIP batch (date range, site or serial list, up to 5,000 records, logged), drawn from the stored record and never stored.
+- **Next:** Phase A step 2, the browser setup wizard.
