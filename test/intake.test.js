@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseRegQuery, readKey } = require('../src/main/intake/registry');
-const { detectEnvironment, classifyWindows, classifyLinux } = require('../src/main/intake/environment');
+const { detectEnvironment, classifyWindows, classifyLinux, parseQueryUser } = require('../src/main/intake/environment');
 const { runMdmCheck, classifyTenant, parseKnownTenants, loadKnownTenants, mdmVerdict, parsePolicyCache, tenantEvidence, confirmClean, REGISTRY_PATHS } = require('../src/main/intake/mdm');
 
 const DIAG = REGISTRY_PATHS[0];
@@ -56,6 +56,23 @@ test('Windows environment: OOBE, audit mode, WinPE and finished setup', () => {
   assert.equal(classifyWindows({ setup: null, status: null }), 'windows');
 });
 
+test('Windows 11 OOBE: setup flags are 0 but the setup account (defaultuser0) gives it away', () => {
+  // Real values from an OOBE VM (Windows 11 26100) sitting on the setup screens.
+  const setup = { OOBEInProgress: 0, SystemSetupInProgress: 0, SetupPhase: 0, SetupType: 0 };
+  assert.equal(classifyWindows({ setup, status: {}, username: 'defaultuser0' }), 'oobe', 'Benchwise started from Shift+F10');
+  assert.equal(classifyWindows({ setup, status: {}, username: 'benchtest', consoleUser: 'defaultuser0' }), 'oobe', 'console still in setup');
+  assert.equal(classifyWindows({ setup, status: {}, username: 'defaultuser100000' }), 'oobe');
+  assert.equal(classifyWindows({ setup, status: {}, username: 'Dakota', consoleUser: 'Dakota' }), 'windows');
+  assert.equal(classifyWindows({ setup, status: { AuditBoot: 1 }, username: 'Administrator' }), 'audit');
+});
+
+test('query user output: the console session user', () => {
+  const real = [' USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME', ' defaultuser0          console             1  Active      none   11/18/2026 9:46 AM'].join('\r\n');
+  assert.equal(parseQueryUser(real), 'defaultuser0');
+  assert.equal(parseQueryUser(' USERNAME  SESSIONNAME  ID\r\n>tech      console      1  Active  none  1/1/2026'), 'tech');
+  assert.equal(parseQueryUser('No User exists for *'), null);
+});
+
 test('Linux environment: live USB vs installed', () => {
   assert.equal(classifyLinux('BOOT_IMAGE=/casper/vmlinuz boot=casper quiet splash'), 'live');
   assert.equal(classifyLinux('initrd=/live/initrd.img boot=live components'), 'live');
@@ -64,9 +81,9 @@ test('Linux environment: live USB vs installed', () => {
 
 test('detectEnvironment keeps the raw evidence for checking against real units', async () => {
   const keys = { 'HKLM\\SYSTEM\\Setup': { OOBEInProgress: 1, SystemSetupInProgress: 1, SetupType: 0, Unrelated: 'x' }, 'HKLM\\SYSTEM\\Setup\\Status': {} };
-  const env = await detectEnvironment({ platform: 'win32', read: async (k) => keys[k] || null, user: () => 'defaultuser0' });
+  const env = await detectEnvironment({ platform: 'win32', read: async (k) => keys[k] || null, user: () => 'defaultuser0', consoleUser: async () => 'defaultuser0' });
   assert.equal(env.mode, 'oobe');
-  assert.deepEqual(env.evidence, { setup: { OOBEInProgress: 1, SystemSetupInProgress: 1, SetupType: 0 }, status: {}, miniNt: false, username: 'defaultuser0' });
+  assert.deepEqual(env.evidence, { setup: { OOBEInProgress: 1, SystemSetupInProgress: 1, SetupType: 0 }, status: {}, miniNt: false, username: 'defaultuser0', consoleUser: 'defaultuser0' });
   assert.equal((await detectEnvironment({ platform: 'darwin', user: () => 'x' })).mode, 'macos');
 });
 

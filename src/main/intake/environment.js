@@ -17,14 +17,39 @@
 
 const fs = require('node:fs/promises');
 const os = require('node:os');
+const { execFile } = require('node:child_process');
 const { readKey } = require('./registry');
 
-/** Pure: Windows registry values -> mode. */
-function classifyWindows({ setup, status, miniNt }) {
+// Windows' temporary setup account. It only exists while setup (OOBE) runs:
+// the setup screens and the Shift+F10 prompt both run as it, and Windows
+// deletes it when setup finishes. On Windows 11 (26100) the OOBEInProgress /
+// SystemSetupInProgress flags were already 0 on the setup screens, so this
+// is the signal that actually works there (verified on an OOBE VM).
+const SETUP_USER = /^defaultuser\d+$/i;
+
+/** Pure: Windows registry values and users -> mode. */
+function classifyWindows({ setup, status, miniNt, username, consoleUser }) {
   if (miniNt) return 'winpe';
   if (status?.AuditBoot === 1) return 'audit';
   if (setup?.OOBEInProgress === 1 || setup?.SystemSetupInProgress === 1) return 'oobe';
+  if (SETUP_USER.test(username || '') || SETUP_USER.test(consoleUser || '')) return 'oobe';
   return 'windows';
+}
+
+/** Pure: `query user` output -> the user signed in at the console, if any. */
+function parseQueryUser(text = '') {
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = /^\s*>?(\S+)\s+console\s/i.exec(line);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function consoleUserOf({ exec = execFile } = {}) {
+  return new Promise((resolve) => {
+    // `query user` exits non-zero when nobody is signed in; the output still counts.
+    exec('query', ['user'], { timeout: 8000, windowsHide: true, encoding: 'utf8' }, (_err, stdout) => resolve(parseQueryUser(stdout)));
+  });
 }
 
 /** Pure: Linux kernel command line -> live USB or installed. */
@@ -42,7 +67,7 @@ async function detectEnvironment(opts = {}) {
   return env;
 }
 
-async function detectRaw({ platform = process.platform, read = readKey, readFile = fs.readFile, user = () => os.userInfo().username } = {}) {
+async function detectRaw({ platform = process.platform, read = readKey, readFile = fs.readFile, user = () => os.userInfo().username, consoleUser = consoleUserOf } = {}) {
   let username = null;
   try {
     username = user();
@@ -51,19 +76,21 @@ async function detectRaw({ platform = process.platform, read = readKey, readFile
   }
 
   if (platform === 'win32') {
-    const [setup, status, miniNt] = await Promise.all([
+    const [setup, status, miniNt, onConsole] = await Promise.all([
       read('HKLM\\SYSTEM\\Setup'),
       read('HKLM\\SYSTEM\\Setup\\Status'),
       read('HKLM\\SYSTEM\\CurrentControlSet\\Control\\MiniNT'),
+      consoleUser(),
     ]);
     const pick = (o, keys) => (o ? Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]])) : null);
     return {
-      mode: classifyWindows({ setup, status, miniNt }),
+      mode: classifyWindows({ setup, status, miniNt, username, consoleUser: onConsole }),
       evidence: {
         setup: pick(setup, ['OOBEInProgress', 'SystemSetupInProgress', 'SetupType', 'SetupPhase', 'SetupShutdownRequired']),
         status: pick(status, ['AuditBoot', 'ChildCompletion']),
         miniNt: Boolean(miniNt),
         username,
+        consoleUser: onConsole,
       },
     };
   }
@@ -74,4 +101,4 @@ async function detectRaw({ platform = process.platform, read = readKey, readFile
   return { mode: platform === 'darwin' ? 'macos' : platform, evidence: { username } };
 }
 
-module.exports = { detectEnvironment, classifyWindows, classifyLinux };
+module.exports = { detectEnvironment, classifyWindows, classifyLinux, parseQueryUser };

@@ -75,6 +75,13 @@ Phase 4 is the groundwork for the Benchwise Hub (3.0) below: the outbox and the 
 
 Brings in the OOBE intake gate from the separate `benchwise-intake` project. Work happens on the `feature/intake-checks` branch and is merged to `main` only once it has been proven on real units. Its PowerShell checks (v1) are proven in production during Windows setup (OOBE, opened with Shift+F10), and v1 stays in production until this is ready. Benchwise is confirmed to launch in OOBE as Administrator, read the hardware and record audio (tested in a VM).
 
+**Verified in a Windows 11 OOBE VM so far:**
+- OOBE detection: on Windows 11 the setup registry flags are already 0 on the setup screens, so OOBE is detected by Windows' temporary setup account (`defaultuser0`).
+- The full MDM check: a Microsoft-confirmed Clean in 29 seconds.
+- The Defender scan: definitions updated and a quick scan in about 3 minutes. Tamper Protection blocked audit mode in the VM.
+
+**Still needs real hardware:** a locked unit, a ghost-profile unit, and Defender audit mode.
+
 **Build order:**
 1. Environment detection and the MDM / Autopilot test.
 2. The Defender malware scan.
