@@ -279,6 +279,7 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
   });
 
   await t.test('USB sticks: build upload checked, one station per stick, failed stick revoked', async () => {
+    const setup = require('../src/setup');
     const login = await app.inject({ method: 'POST', url: '/api/v1/session', payload: { username: 'admin', password: 'a very long password' } });
     const cookie = login.headers['set-cookie'].split(';')[0];
     const adm = { cookie, 'x-benchwise': '1' };
@@ -294,18 +295,30 @@ test('Hub against PostgreSQL', { skip }, async (t) => {
       z.end();
     });
     const put = async (buf, name) => stickApp.inject({ method: 'PUT', url: `/api/v1/sticks/app?name=${name}`, headers: { ...adm, 'content-type': 'application/zip' }, payload: buf });
-    const bad = await put(await zipOf([['readme.txt', 'x']]), 'other.zip');
+    const bad = await put(await zipOf([['readme.txt', 'x']]), 'Benchwise-2.5.0-win-x64.zip');
     assert.equal(bad.statusCode, 400);
     assert.match(bad.json().error || bad.payload, /stick build/);
-    const good = await put(await zipOf([['Benchwise.exe', 'MZ'], ['LAUNCH.CMD', '@echo off']]), 'Benchwise-2.5.0-beta.1-win-x64.zip');
+    const stickZip = await zipOf([['Benchwise.exe', 'MZ'], ['LAUNCH.CMD', '@echo off']]);
+    const old = await put(stickZip, 'Benchwise-2.5.0-beta.1-win-x64.zip');
+    assert.equal(old.statusCode, 400);
+    assert.match(old.payload, /can't send reports/, 'builds without the outbox are refused');
+    assert.equal((await put(stickZip, 'renamed.zip')).statusCode, 400, 'a build must say its version');
+    const good = await put(stickZip, 'Benchwise-2.5.0-beta.2-win-x64.zip');
     assert.equal(good.statusCode, 200);
-    assert.equal(good.json().app.version, '2.5.0-beta.1');
+    assert.equal(good.json().app.version, '2.5.0-beta.2');
 
     const info = (await stickApp.inject({ url: '/api/v1/sticks', headers: { cookie } })).json();
+    assert.deepEqual([info.app.tooOld, info.minVersion], [null, '2.5.0-beta.2']);
     assert.deepEqual(info.drives.map((d) => [d.name, d.eligible]), [['sdb', true], ['sdc', false]]);
     assert.equal((await make({ device: 'sdc' })).statusCode, 400, 'too small');
     assert.equal((await make({ device: 'sdz' })).statusCode, 404, 'not plugged in');
     assert.equal((await make({ device: 'sdb', serverAddress: 'x"&calc' })).statusCode, 400);
+
+    const stored = await setup.getSetting(pool, 'sticks.app');
+    await setup.setSetting(pool, 'sticks.app', { ...stored, version: '2.5.0-beta.1' });
+    assert.match((await stickApp.inject({ url: '/api/v1/sticks', headers: { cookie } })).json().app.tooOld, /can't send reports/);
+    assert.equal((await make({ device: 'sdb' })).statusCode, 409, 'a build stored before the rule is refused too');
+    await setup.setSetting(pool, 'sticks.app', stored);
 
     const res = await make({ device: 'sdb', serverAddress: '172.16.0.2' });
     assert.equal(res.statusCode, 202);

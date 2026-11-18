@@ -519,6 +519,8 @@ function sticksCard(info, refresh) {
     el('h2', {}, 'USB sticks'),
     el('p', { class: 'muted small' }, 'Plug a USB drive into this server and make it a Benchwise stick: Benchwise, the floor Wi-Fi and this server\'s address, with its own station key.'),
     !info.wifi ? el('p', { class: 'badge incomplete' }, 'No floor Wi-Fi set: sticks will need a wired connection.') : null,
+    a?.tooOld ? el('p', { class: 'badge incomplete' }, a.tooOld) : null,
+    el('p', { class: 'muted small' }, `Sticks need Benchwise ${info.minVersion} or later (older builds can't send reports to this server).`),
     el('p', {}, el('strong', {}, 'Benchwise for sticks: '), a ? `${a.version} (${a.source === 'github' ? `GitHub${a.verified ? ', checksum verified' : ''}` : 'uploaded'}, ${new Date(a.at).toLocaleDateString()})` : el('span', { class: 'muted' }, 'none yet')),
     el('div', { class: 'row' }, el('button', { class: 'btn', onclick: fetchLatest }, 'Get latest release'), el('label', { class: 'small' }, pre, ' include pre-releases'), el('button', { class: 'btn', onclick: () => upload.click() }, 'Upload ZIP…'), upload),
     el('div', { class: 'row spaced' }, el('span', { class: 'small' }, 'Address sticks use:'), address),
@@ -526,7 +528,7 @@ function sticksCard(info, refresh) {
       info.drives.length
         ? info.drives.map((d) => el('tr', {},
             el('td', {}, el('strong', {}, d.model), el('div', { class: 'muted small' }, [`/dev/${d.name}`, d.size, d.serial && `S/N ${d.serial}`, d.label && `"${d.label}"`].filter(Boolean).join(' · '))),
-            el('td', {}, d.eligible ? el('button', { class: 'btn primary small', disabled: !a, onclick: () => make(d) }, 'Make stick') : el('span', { class: 'muted small' }, d.why))))
+            el('td', {}, d.eligible ? el('button', { class: 'btn primary small', disabled: !a || Boolean(a.tooOld), onclick: () => make(d) }, 'Make stick') : el('span', { class: 'muted small' }, d.why))))
         : el('tr', {}, el('td', { class: 'muted' }, 'No USB drive plugged into this server.')))),
     el('div', { class: 'row' }, el('button', { class: 'btn small', onclick: refresh }, 'Refresh drives')),
     progress,

@@ -610,7 +610,15 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true, l
   app.get('/api/v1/sticks', async (req) => {
     await admin(req);
     const [build, drives, wifi, defaults] = await Promise.all([setup.getSetting(pool, 'sticks.app'), listDrives(), setup.getSetting(pool, 'sticks.wifi'), stickDefaults()]);
-    return { app: build && fs.existsSync(appZip()) ? build : null, drives, wifi: wifiCfg.publicView(wifi), defaults };
+    let tooOld = null;
+    if (build) {
+      try {
+        sticks.checkStickVersion(build.version);
+      } catch (err) {
+        tooOld = err.message;
+      }
+    }
+    return { app: build && fs.existsSync(appZip()) ? { ...build, tooOld } : null, minVersion: sticks.MIN_STICK_VERSION, drives, wifi: wifiCfg.publicView(wifi), defaults };
   });
 
   app.post('/api/v1/sticks/app/fetch', { schema: { body: { type: 'object', properties: { includePrerelease: { type: 'boolean' } } } } }, async (req) => {
@@ -628,6 +636,13 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true, l
   app.put('/api/v1/sticks/app', { bodyLimit: 700 * 1024 * 1024 }, async (req) => {
     const p = await admin(req);
     const name = String(req.query?.name || '');
+    const version = sticks.versionFromFileName(name);
+    try {
+      sticks.checkStickVersion(version);
+    } catch (err) {
+      req.raw.resume(); // drain the upload; nothing is stored
+      fail(400, err.message);
+    }
     fs.mkdirSync(config.sticksDir, { recursive: true });
     const tmp = `${appZip()}.upload`;
     let size = 0;
@@ -647,7 +662,7 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true, l
       fail(400, err.message);
     }
     fs.renameSync(tmp, appZip());
-    const meta = { version: (/Benchwise-(.+)-win-x64\.zip$/.exec(name) || [])[1] || 'uploaded', file: name || 'upload.zip', sha256: await sticks.sha256File(appZip()), source: 'upload', at: new Date().toISOString() };
+    const meta = { version, file: name, sha256: await sticks.sha256File(appZip()), source: 'upload', at: new Date().toISOString() };
     await setup.setSetting(pool, 'sticks.app', meta);
     await store.log(pool, p.name, 'sticks.app', { version: meta.version, source: 'upload', sha256: meta.sha256 });
     return { app: meta };
@@ -660,6 +675,11 @@ function buildApp({ pool, config = loadConfig(), side = 'both', logger = true, l
       const p = await admin(req);
       const build = await setup.getSetting(pool, 'sticks.app');
       if (!build || !fs.existsSync(appZip())) fail(409, 'Get the Benchwise build for sticks first.');
+      try {
+        sticks.checkStickVersion(build.version);
+      } catch (err) {
+        fail(409, `${err.message} Get a newer build first.`);
+      }
       const drive = (await listDrives()).find((d) => d.name === req.body.device);
       if (!drive) fail(404, 'That drive is no longer plugged in. Refresh the list.');
       if (!drive.eligible) fail(400, `That drive can't be used: ${drive.why}.`);
