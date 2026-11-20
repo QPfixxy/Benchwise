@@ -25,6 +25,8 @@ Network and certificate changes are applied by a small root-only helper (`benchw
 
 To upgrade, pull the new version and run the same command again. Passwords, certificates and data are kept.
 
+**The installer keeps the machine awake:** sleep and suspend are switched off (including a closed laptop lid), and so is Wi-Fi power saving. A sleeping server can't take reports. This matters on Ubuntu Desktop, which suspends after about 20 idle minutes. For a fixed server address, give the machine a DHCP reservation in the router, since sticks are made with the server's address written in. To allow sleep again: `sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target`.
+
 **Two networks** (like the Aiken server: a company side and a floor/test side):
 
 ```bash

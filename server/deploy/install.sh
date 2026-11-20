@@ -225,6 +225,36 @@ if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
   ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
 fi
 
+# ------------------------------------------------------------------ stay awake
+# A server that sleeps can't take reports. Ubuntu Desktop suspends after ~20
+# idle minutes, and a closed laptop lid suspends too: switch both off, and
+# stop Wi-Fi power saving (it drops connections on a Wi-Fi-only server).
+# Undo: systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target
+say "Keeping this machine awake"
+systemctl mask -q sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target 2>/dev/null || true
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/90-benchwise-server.conf <<'EOF'
+# Benchwise Server: never sleep (idle, lid or suspend key).
+[Login]
+IdleAction=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+EOF
+# Applies at the next boot: reloading logind now could end a desktop session.
+if [ -d /etc/NetworkManager/conf.d ]; then
+  cat > /etc/NetworkManager/conf.d/90-benchwise-wifi-powersave.conf <<'EOF'
+# Benchwise Server: Wi-Fi power saving off (2 = disable).
+[connection]
+wifi.powersave = 2
+EOF
+  # Takes effect when Wi-Fi next reconnects (at the latest on reboot); not
+  # forced now, so an install over Wi-Fi doesn't drop its own connection.
+fi
+echo "Sleep and suspend are off; Wi-Fi power saving is off."
+
 # ------------------------------------------------------------------ backups
 say "Nightly backups"
 install -m 0755 "$SRC/deploy/backup.sh" /usr/local/sbin/benchwise-server-backup
