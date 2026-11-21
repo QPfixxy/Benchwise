@@ -158,5 +158,8 @@
     "url": "https://github.com/qpfixxy/Benchwise.git"
   },
   "author": "Benchwise contributors",
-  "homepage": "https://github.com/qpfixxy/Benchwise"
+  "homepage": "https://github.com/qpfixxy/Benchwise",
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
+  }
 }
